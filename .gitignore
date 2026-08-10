@@ -1,0 +1,65 @@
+HELP.md
+target/
+.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+.credentials.md
+credentials.md
+
+### Environment Variables ###
+.env
+.env.*
+!.env.example
+application-dev.yml
+
+### Application Data ###
+uploads/
+*.log
+
+### Generated Documentation & Artifacts ###
+API_TEST_COVERAGE.md
+FINAL_API_DOCUMENTATION.md
+ROUTE_RECONCILIATION.md
+PRODUCTION_READINESS_REPORT.md
+implementation_plan.md
+task.md
+walkthrough.md
+
+### OS generated files ###
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+api_documentation.md
+backend_audit_report.md
