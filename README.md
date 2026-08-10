@@ -14,7 +14,7 @@
 
 <br />
 
-> **Status:** Production Ready | 🛡️ 100% Test Coverage | 🔒 Bank-grade Security
+> **Status:** Production Ready |  100% Test Coverage | Bank-grade Security
 
 ---
 
