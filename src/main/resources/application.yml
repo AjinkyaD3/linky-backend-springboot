@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: linky
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
+app:
+  frontend-url: ${FRONTEND_URL:http://localhost:3000}
+  mail-from: ${MAIL_FROM:onboarding@resend.dev}
+  cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+  cookie-secure: ${COOKIE_SECURE:true}
+
+resend:
+  api-key: ${RESEND_API_KEY:}
+
+server:
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never

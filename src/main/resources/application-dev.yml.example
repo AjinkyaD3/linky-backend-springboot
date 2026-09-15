@@ -1,0 +1,45 @@
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASS}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      # Same shared Supabase pooler as prod (15 total client cap) - keep this
+      # small so a forgotten local run can't starve the deployed instance.
+      maximum-pool-size: 3
+      minimum-idle: 1
+
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+      username: ${REDIS_USERNAME}
+      password: ${REDIS_PASSWORD}
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+
+logging:
+  level:
+    org.hibernate.SQL: DEBUG
+    org.hibernate.orm.jdbc.bind: TRACE
+
+management:
+  endpoint:
+    health:
+      show-details: always
+
+app:
+  cookie-secure: ${COOKIE_SECURE:false}
+
+jwt:
+  secret: ${JWT_SECRET}
+  access-token-expiry: 900000
+  refresh-token-expiry: 604800000

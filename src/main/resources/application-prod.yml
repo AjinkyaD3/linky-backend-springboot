@@ -1,0 +1,31 @@
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASS}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      # Supabase's free-tier pooler (session mode) caps total clients at 15,
+      # shared across every connection to the project - prod, local dev,
+      # the Supabase dashboard, etc. Keep this small so one Render instance
+      # can't exhaust it on its own (this happened once already).
+      maximum-pool-size: 3
+      minimum-idle: 1
+
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+      username: ${REDIS_USERNAME}
+      password: ${REDIS_PASSWORD}
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    open-in-view: false
+
+jwt:
+  secret: ${JWT_SECRET}
+  access-token-expiry: 900000
+  refresh-token-expiry: 604800000
