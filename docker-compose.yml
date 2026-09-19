@@ -1,0 +1,39 @@
+# Local development dependencies for the `local` Spring profile.
+#
+#   docker compose up -d
+#   ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
+#
+# These are throwaway local services - the credentials here are deliberately
+# trivial and must never be reused anywhere else.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: linky-postgres
+    environment:
+      POSTGRES_DB: linky_local
+      POSTGRES_USER: postgres
+      # Matches application-local.yml, which defaults DB_PASS to empty.
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    volumes:
+      - linky-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d linky_local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: linky-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  linky-postgres-data:

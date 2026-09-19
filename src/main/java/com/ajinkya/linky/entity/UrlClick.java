@@ -6,7 +6,11 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "url_clicks")
+@Table(name = "url_clicks", indexes = {
+        // Every analytics query filters by url, and most also by a date range.
+        @Index(name = "idx_url_click_url", columnList = "url_id"),
+        @Index(name = "idx_url_click_url_clicked_at", columnList = "url_id, clickedAt")
+})
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

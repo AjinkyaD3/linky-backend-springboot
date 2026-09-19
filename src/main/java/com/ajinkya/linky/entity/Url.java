@@ -9,7 +9,9 @@ import org.hibernate.annotations.SQLRestriction;
 
 @Entity
 @Table(name = "urls", indexes = {
-        @Index(name = "idx_short_code", columnList = "shortCode", unique = true)
+        @Index(name = "idx_short_code", columnList = "shortCode", unique = true),
+        // The dashboard's link list is always scoped to the signed-in user.
+        @Index(name = "idx_url_user", columnList = "user_id")
 })
 @SQLRestriction("is_deleted = false")
 @Data

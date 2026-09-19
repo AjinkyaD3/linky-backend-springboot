@@ -1,0 +1,53 @@
+# Fully local profile: talks to Postgres and Redis on this machine and never
+# touches the shared Supabase project.
+#
+# Use this for day-to-day development instead of `dev`. The `dev` profile points
+# at the SAME Supabase pooler as production, so running it locally writes to the
+# production database and burns connections from the 15-client shared cap.
+#
+#   ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
+#
+# Requires Postgres and Redis running locally - see docker-compose.yml, or use
+# native installs. Defaults below match docker-compose.yml.
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/linky_local}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASS:}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+
+logging:
+  level:
+    org.hibernate.SQL: DEBUG
+
+management:
+  endpoint:
+    health:
+      show-details: always
+
+app:
+  # Plain http locally, so the auth cookie must not be marked Secure.
+  cookie-secure: false
+
+jwt:
+  # Local-only throwaway secret. Production injects JWT_SECRET from the env.
+  secret: ${JWT_SECRET:local-development-only-secret-key-not-used-anywhere-else-min-256-bits}
+  access-token-expiry: 900000
+  refresh-token-expiry: 604800000
