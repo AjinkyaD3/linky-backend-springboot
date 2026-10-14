@@ -24,6 +24,15 @@ public interface UrlRepository extends JpaRepository<Url, Long>, JpaSpecificatio
 
     Optional<Url> findByShortCodeAndUser(String shortCode, com.ajinkya.linky.entity.User user);
 
+    /**
+     * Atomically consumes a one-time link. Returns 1 for the single caller that flips
+     * isActive from true to false, 0 for everyone else, so concurrent clicks can't both win.
+     */
+    @Modifying
+    @org.springframework.transaction.annotation.Transactional
+    @Query("UPDATE Url u SET u.isActive = false WHERE u.id = :id AND u.isActive = true")
+    int deactivateIfActive(@Param("id") Long id);
+
     @Modifying
     @Query("UPDATE Url u SET u.clickCount = u.clickCount + 1 WHERE u.id = :id")
     void incrementClickCount(@Param("id") Long id);

@@ -88,8 +88,10 @@ public class RedirectController {
         }
 
         if (url.getIsOneTime()) {
-            url.setIsActive(false);
-            urlRepository.save(url);
+            // Atomic claim: only one concurrent request can consume a one-time link.
+            if (urlRepository.deactivateIfActive(url.getId()) == 0) {
+                return frontendErrorRedirect("inactive");
+            }
             redisService.delete(shortCode);
         }
         

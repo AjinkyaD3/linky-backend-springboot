@@ -165,4 +165,17 @@ public class RedirectControllerTest extends BaseIntegrationTest {
                 .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isForbidden());
     }
+
+    @Test
+    void deactivateIfActive_OnlyFirstCallerWins() {
+        Url url = new Url();
+        url.setOriginalUrl("https://example.com/once");
+        url.setShortCode("once1");
+        url.setVisibility(Visibility.PUBLIC);
+        url.setIsOneTime(true);
+        url = urlRepository.save(url);
+
+        org.junit.jupiter.api.Assertions.assertEquals(1, urlRepository.deactivateIfActive(url.getId()));
+        org.junit.jupiter.api.Assertions.assertEquals(0, urlRepository.deactivateIfActive(url.getId()));
+    }
 }
