@@ -1,0 +1,21 @@
+# Example Prometheus scrape config for Linky. Not run in CI; adjust the target.
+# The endpoint is closed unless METRICS_TOKEN is set on the backend; Prometheus sends it as a header.
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: linky
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["localhost:8080"]
+    # The backend expects an "X-Metrics-Token: <METRICS_TOKEN>" header. Check your Prometheus
+    # version's docs for sending a custom scrape header, or put a small proxy / Grafana Agent in
+    # front that adds it. (Verified here with curl, not with a running Prometheus.)
+
+# Useful queries
+#   redirect rate:        sum(rate(http_server_requests_seconds_count{uri="/{shortCode}"}[1m]))
+#   redirect p99 (s):     histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{uri="/{shortCode}"}[5m])))
+#   cache hit ratio:      1 - sum(rate(linky_cache_lookups_total{layer="db"}[5m])) / sum(rate(linky_cache_lookups_total[5m]))
+#   click backlog:        linky_clicks_stream_length
+#   lost analytics:       rate(linky_clicks_dropped_total[5m]) + rate(linky_clicks_dead_lettered_total[5m])
+#   persist failures:     rate(linky_clicks_batch_failures_total[5m])

@@ -38,6 +38,10 @@ public interface UrlRepository extends JpaRepository<Url, Long>, JpaSpecificatio
     void incrementClickCount(@Param("id") Long id);
 
     @Modifying
+    @Query("UPDATE Url u SET u.clickCount = u.clickCount + :n WHERE u.id = :id")
+    void incrementClickCountBy(@Param("id") Long id, @Param("n") Long n);
+
+    @Modifying
     @Query(value = "DELETE FROM url_clicks WHERE url_id = :id", nativeQuery = true)
     void forceDeleteUrlClicks(@Param("id") Long id);
 

@@ -3,8 +3,9 @@ package com.ajinkya.linky.controller;
 import com.ajinkya.linky.entity.Url;
 import com.ajinkya.linky.exception.ResourceNotFoundException;
 import com.ajinkya.linky.repository.UrlRepository;
-import com.ajinkya.linky.service.ClickService;
-import com.ajinkya.linky.service.RedisService;
+import com.ajinkya.linky.dto.CachedLink;
+import com.ajinkya.linky.service.ClickEventPublisher;
+import com.ajinkya.linky.service.LinkCache;
 import com.ajinkya.linky.service.UrlService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpHeaders;
@@ -31,20 +32,20 @@ import java.net.URI;
 public class RedirectController {
 
     private final UrlService urlService;
-    private final ClickService clickService;
+    private final ClickEventPublisher clickPublisher;
     private final UrlRepository urlRepository;
     private final PasswordEncoder passwordEncoder;
-    private final RedisService redisService;
+    private final LinkCache linkCache;
 
     @Value("${app.frontend-url}")
     private String frontendUrl;
 
-    public RedirectController(UrlService urlService, ClickService clickService, UrlRepository urlRepository, PasswordEncoder passwordEncoder, RedisService redisService) {
+    public RedirectController(UrlService urlService, ClickEventPublisher clickPublisher, UrlRepository urlRepository, PasswordEncoder passwordEncoder, LinkCache linkCache) {
         this.urlService = urlService;
-        this.clickService = clickService;
+        this.clickPublisher = clickPublisher;
         this.urlRepository = urlRepository;
         this.passwordEncoder = passwordEncoder;
-        this.redisService = redisService;
+        this.linkCache = linkCache;
     }
 
     /**
@@ -55,54 +56,67 @@ public class RedirectController {
     @GetMapping("/{shortCode}")
     public ResponseEntity<?> redirect(@PathVariable String shortCode, HttpServletRequest request) {
 
-        String originalUrl;
-        try {
-            originalUrl = urlService.getOriginalUrl(shortCode);
-        } catch (ResourceNotFoundException e) {
-            return frontendErrorRedirect(reasonFor(e.getMessage()));
-        }
+        // Hot path: L1 -> L2 -> database. Almost every request is served from memory.
+        CachedLink link = linkCache.get(shortCode, () -> loadFromDatabase(shortCode));
 
-        Url url;
-        try {
-            url = urlRepository.findByShortCode(shortCode)
-                .orElseThrow(() -> new ResourceNotFoundException("Not found"));
-        } catch (ResourceNotFoundException e) {
+        if (link.missing()) {
             return frontendErrorRedirect("not_found");
         }
+        if (link.isExpired()) {
+            return frontendErrorRedirect("expired");
+        }
+        if (!link.active()) {
+            return frontendErrorRedirect("inactive");
+        }
 
-        if (url.getVisibility() == Visibility.PRIVATE) {
+        if (link.isPrivate()) {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
             if (auth == null || !auth.isAuthenticated() || auth.getPrincipal().equals("anonymousUser")) {
                 return loginRedirect(shortCode);
             }
             User currentUser = (User) auth.getPrincipal();
-            if (url.getUser() == null || !url.getUser().getId().equals(currentUser.getId())) {
+            if (link.ownerId() == null || !link.ownerId().equals(currentUser.getId())) {
                 return loginRedirect(shortCode);
             }
         }
 
-        if (url.getPasswordHash() != null && !url.getPasswordHash().isEmpty()) {
+        if (link.hasPassword()) {
             HttpHeaders headers = new HttpHeaders();
             headers.setLocation(URI.create(frontendUrl + "/unlock/" + shortCode));
             return new ResponseEntity<>(headers, HttpStatus.FOUND);
         }
 
-        if (url.getIsOneTime()) {
+        if (link.oneTime()) {
             // Atomic claim: only one concurrent request can consume a one-time link.
-            if (urlRepository.deactivateIfActive(url.getId()) == 0) {
+            if (urlRepository.deactivateIfActive(link.id()) == 0) {
                 return frontendErrorRedirect("inactive");
             }
-            redisService.delete(shortCode);
+            linkCache.invalidate(shortCode);
         }
-        
-        clickService.logClick(url, request);
+
+        clickPublisher.publish(link.id(), request);
 
         HttpHeaders headers = new HttpHeaders();
-        headers.setLocation(URI.create(originalUrl));
-
+        headers.setLocation(URI.create(link.originalUrl()));
         return new ResponseEntity<>(headers, HttpStatus.FOUND);
     }
-    
+
+    private CachedLink loadFromDatabase(String shortCode) {
+        return urlRepository.findByShortCode(shortCode)
+                .map(url -> new CachedLink(
+                        url.getId(),
+                        url.getOriginalUrl(),
+                        Boolean.TRUE.equals(url.getIsActive()),
+                        Boolean.TRUE.equals(url.getIsOneTime()),
+                        url.getPasswordHash() != null && !url.getPasswordHash().isEmpty(),
+                        url.getVisibility() == Visibility.PRIVATE,
+                        url.getUser() == null ? null : url.getUser().getId(),
+                        url.getExpiresAt() == null ? null
+                                : url.getExpiresAt().atZone(java.time.ZoneId.systemDefault()).toEpochSecond(),
+                        false))
+                .orElseGet(CachedLink::notFound);
+    }
+
     @PostMapping("/{shortCode}/unlock")
     public ResponseEntity<UnlockResponse> unlockUrl(@PathVariable String shortCode, @Valid @RequestBody UnlockRequest request) {
         Url url = urlRepository.findByShortCode(shortCode)
@@ -120,7 +134,7 @@ public class RedirectController {
             if (urlRepository.deactivateIfActive(url.getId()) == 0) {
                 throw new ResourceNotFoundException("Link is no longer active");
             }
-            redisService.delete(shortCode);
+            linkCache.invalidate(shortCode);
             return ResponseEntity.ok(new UnlockResponse(url.getOriginalUrl()));
         }
 
@@ -139,16 +153,4 @@ public class RedirectController {
         return new ResponseEntity<>(headers, HttpStatus.FOUND);
     }
 
-    private String reasonFor(String exceptionMessage) {
-        if (exceptionMessage == null) {
-            return "not_found";
-        }
-        if (exceptionMessage.contains("expired")) {
-            return "expired";
-        }
-        if (exceptionMessage.contains("not active")) {
-            return "inactive";
-        }
-        return "not_found";
-    }
 }

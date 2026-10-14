@@ -83,6 +83,16 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(body, HttpStatus.BAD_REQUEST);
     }
 
+    @ExceptionHandler(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<Map<String, Object>> handleTypeMismatch(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException ex) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("status", HttpStatus.BAD_REQUEST.value());
+        body.put("error", "Bad Request");
+        body.put("message", "Invalid value for parameter '" + ex.getName() + "'");
+        return new ResponseEntity<>(body, HttpStatus.BAD_REQUEST);
+    }
+
     @ExceptionHandler(org.springframework.web.multipart.support.MissingServletRequestPartException.class)
     public ResponseEntity<Map<String, Object>> handleMissingServletRequestPartException(org.springframework.web.multipart.support.MissingServletRequestPartException ex) {
         Map<String, Object> body = new HashMap<>();

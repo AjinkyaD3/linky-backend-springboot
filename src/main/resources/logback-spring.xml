@@ -39,9 +39,22 @@
         </encoder>
     </appender>
 
-    <root level="INFO">
-        <appender-ref ref="CONSOLE"/>
-        <appender-ref ref="FILE"/>
-        <appender-ref ref="ERROR_FILE"/>
-    </root>
+    <!-- Structured JSON to stdout for production log aggregators (Loki, Datadog, CloudWatch...). -->
+    <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder"/>
+    </appender>
+
+    <springProfile name="prod | json">
+        <root level="INFO">
+            <appender-ref ref="JSON_CONSOLE"/>
+        </root>
+    </springProfile>
+
+    <springProfile name="!prod &amp; !json">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="FILE"/>
+            <appender-ref ref="ERROR_FILE"/>
+        </root>
+    </springProfile>
 </configuration>

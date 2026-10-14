@@ -5,12 +5,34 @@ spring:
     active: ${SPRING_PROFILES_ACTIVE:dev}
   lifecycle:
     timeout-per-shutdown-phase: 20s
+  data:
+    redis:
+      # Never let a slow Redis hang request threads; callers degrade to the database.
+      timeout: 500ms
+      connect-timeout: 1s
+  flyway:
+    enabled: true
+    # Existing databases (created by Hibernate before Flyway was added) are adopted at V1.
+    baseline-on-migrate: true
+    baseline-version: 1
+  jpa:
+    hibernate:
+      ddl-auto: validate
 
 app:
   frontend-url: ${FRONTEND_URL:http://localhost:3000}
   mail-from: ${MAIL_FROM:onboarding@resend.dev}
   cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
   cookie-secure: ${COOKIE_SECURE:true}
+  # Number of reverse proxies in front of the app that append to X-Forwarded-For (0 = ignore the header).
+  trusted-proxy-hops: ${TRUSTED_PROXY_HOPS:0}
+  # Secret mixed into stored IP hashes. Changing it breaks unique-visitor continuity.
+  ip-hash-salt: ${IP_HASH_SALT:}
+  # Shared secret for scraping /actuator/prometheus (sent as X-Metrics-Token). Blank = endpoint closed.
+  metrics-token: ${METRICS_TOKEN:}
+  clicks:
+    consumer:
+      enabled: ${CLICK_CONSUMER_ENABLED:true}
 
 resend:
   api-key: ${RESEND_API_KEY:}
@@ -33,7 +55,15 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,info,prometheus
   endpoint:
     health:
       show-details: never
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+
+logging:
+  pattern:
+    level: "%5p [%X{requestId:-}]"

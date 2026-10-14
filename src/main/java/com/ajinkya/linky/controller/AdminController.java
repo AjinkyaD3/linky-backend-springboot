@@ -22,11 +22,14 @@ public class AdminController {
     private final UserRepository userRepository;
     private final UrlRepository urlRepository;
     private final UrlClickRepository urlClickRepository;
+    private final com.ajinkya.linky.service.LinkCache linkCache;
 
-    public AdminController(UserRepository userRepository, UrlRepository urlRepository, UrlClickRepository urlClickRepository) {
+    public AdminController(UserRepository userRepository, UrlRepository urlRepository, UrlClickRepository urlClickRepository,
+                           com.ajinkya.linky.service.LinkCache linkCache) {
         this.userRepository = userRepository;
         this.urlRepository = urlRepository;
         this.urlClickRepository = urlClickRepository;
+        this.linkCache = linkCache;
     }
 
     @GetMapping("/stats")
@@ -46,6 +49,7 @@ public class AdminController {
     @Transactional
     @DeleteMapping("/urls/{id}")
     public ResponseEntity<Void> forceDeleteUrl(@PathVariable Long id) {
+        urlRepository.findById(id).ifPresent(u -> linkCache.invalidate(u.getShortCode()));
         // Use native queries to bypass the @SQLRestriction("is_deleted = false") on the Url entity
         urlRepository.forceDeleteUrlClicks(id);
         urlRepository.forceDeleteUrlTags(id);

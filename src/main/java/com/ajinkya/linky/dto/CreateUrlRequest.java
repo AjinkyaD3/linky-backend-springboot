@@ -8,7 +8,7 @@ import org.hibernate.validator.constraints.URL;
 public class CreateUrlRequest {
     
     @NotBlank(message = "URL is required")
-    @URL(message = "Must be a valid URL")
+    @URL(regexp = "^(?i)https?://.*", message = "Must be a valid http or https URL")
     private String originalUrl;
 
     private String customAlias;

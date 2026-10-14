@@ -36,13 +36,13 @@ public class UrlService {
     private static final Logger log = LoggerFactory.getLogger(UrlService.class);
 
     private final UrlRepository urlRepository;
-    private final RedisService redisService;
+    private final LinkCache linkCache;
     private final PasswordEncoder passwordEncoder;
     private final TagRepository tagRepository;
 
-    public UrlService(UrlRepository urlRepository, RedisService redisService, PasswordEncoder passwordEncoder, TagRepository tagRepository) {
+    public UrlService(UrlRepository urlRepository, LinkCache linkCache, PasswordEncoder passwordEncoder, TagRepository tagRepository) {
         this.urlRepository = urlRepository;
-        this.redisService = redisService;
+        this.linkCache = linkCache;
         this.passwordEncoder = passwordEncoder;
         this.tagRepository = tagRepository;
     }
@@ -123,7 +123,7 @@ public class UrlService {
         url = urlRepository.save(url);
         
         // Write-through cache
-        redisService.save(url.getShortCode(), url.getOriginalUrl());
+        linkCache.invalidate(url.getShortCode());
 
         return mapToResponse(url);
     }
@@ -163,7 +163,7 @@ public class UrlService {
         }
         
         // Update cache
-        redisService.save(existing.getShortCode(), existing.getOriginalUrl());
+        linkCache.invalidate(existing.getShortCode());
 
         return existing;
     }
@@ -257,7 +257,7 @@ public class UrlService {
         duplicate.setShortCode(generateUniqueShortCode());
         duplicate = urlRepository.save(duplicate);
         
-        redisService.save(duplicate.getShortCode(), duplicate.getOriginalUrl());
+        linkCache.invalidate(duplicate.getShortCode());
         return mapToResponse(duplicate);
     }
 
@@ -295,7 +295,7 @@ public class UrlService {
 
         existing.setIsDeleted(true);
         urlRepository.save(existing);
-        redisService.delete(existing.getShortCode());
+        linkCache.invalidate(existing.getShortCode());
     }
 
     /**
@@ -327,32 +327,20 @@ public class UrlService {
     }
 
     /**
-     * Get original URL for redirection.
+     * Resolve the target of an active, unexpired link straight from the database.
+     * Used by the (rare) unlock flow; the redirect hot path goes through {@link LinkCache}.
      */
     public String getOriginalUrl(String shortCode) {
-        
-        Optional<String> cachedUrl = redisService.get(shortCode);
-        if (cachedUrl.isPresent()) {
-            log.debug("Cache HIT for {}", shortCode);
-            return cachedUrl.get();
-        }
-        
-        log.debug("Cache MISS for {}", shortCode);
-        
         Url url = urlRepository.findByShortCode(shortCode)
-                .orElseThrow(() ->
-                        new ResourceNotFoundException("Short code not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Short code not found"));
 
         if (isExpired(url)) {
             throw new ResourceNotFoundException("This URL has expired.");
         }
-        
+
         if (!url.getIsActive()) {
             throw new ResourceNotFoundException("This URL is not active.");
         }
-
-        // Populate cache
-        redisService.save(shortCode, url.getOriginalUrl());
 
         return url.getOriginalUrl();
     }

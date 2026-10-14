@@ -9,8 +9,9 @@ spring:
       # shared across every connection to the project - prod, local dev,
       # the Supabase dashboard, etc. Keep this small so one Render instance
       # can't exhaust it on its own (this happened once already).
-      maximum-pool-size: 3
+      maximum-pool-size: ${DB_POOL_SIZE:5}
       minimum-idle: 1
+      connection-timeout: 5000
 
   data:
     redis:
@@ -21,7 +22,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     show-sql: false
     open-in-view: false
 
@@ -29,3 +30,7 @@ jwt:
   secret: ${JWT_SECRET}
   access-token-expiry: 900000
   refresh-token-expiry: 604800000
+
+app:
+  # Render (and most PaaS) terminate TLS at one proxy that appends the client address.
+  trusted-proxy-hops: ${TRUSTED_PROXY_HOPS:1}

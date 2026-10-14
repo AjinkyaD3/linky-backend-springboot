@@ -33,6 +33,12 @@ public class SecurityConfig {
     @Value("${app.cors-allowed-origins}")
     private String corsAllowedOrigins;
 
+    @Value("${app.trusted-proxy-hops:0}")
+    private int trustedProxyHops;
+
+    @Value("${app.metrics-token:}")
+    private String metricsToken;
+
     public SecurityConfig(JwtAuthFilter jwtAuthFilter, RedisTemplate<String, String> redisTemplate, ApiKeyAuthenticationFilter apiKeyAuthenticationFilter) {
         this.jwtAuthFilter = jwtAuthFilter;
         this.redisTemplate = redisTemplate;
@@ -43,7 +49,7 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         
         // Add our rate limiter filter before the JWT filter
-        RateLimiterFilter rateLimiterFilter = new RateLimiterFilter(redisTemplate);
+        RateLimiterFilter rateLimiterFilter = new RateLimiterFilter(redisTemplate, trustedProxyHops);
         
         http
             .csrf(AbstractHttpConfigurer::disable)
@@ -66,6 +72,10 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/api/health/**").permitAll()
                 .requestMatchers("/actuator/health/**").permitAll()
+                // Prometheus scrape endpoint: closed unless a shared token is configured and presented.
+                .requestMatchers("/actuator/prometheus").access((authentication, context) ->
+                        new org.springframework.security.authorization.AuthorizationDecision(
+                                metricsTokenMatches(context.getRequest().getHeader("X-Metrics-Token"))))
                 // Deliberate: links created anonymously have no owner, so their
                 // analytics are readable by anyone holding the short code. Owned
                 // links are still scoped to the owner inside AnalyticsService -
@@ -84,6 +94,15 @@ public class SecurityConfig {
         return http.build();
     }
     
+    private boolean metricsTokenMatches(String presented) {
+        if (metricsToken == null || metricsToken.isBlank() || presented == null) {
+            return false;
+        }
+        return java.security.MessageDigest.isEqual(
+                metricsToken.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                presented.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();

@@ -31,9 +31,11 @@ public class RateLimiterFilter extends OncePerRequestFilter {
             Long.class);
 
     private final RedisTemplate<String, String> redisTemplate;
+    private final int trustedProxyHops;
 
-    public RateLimiterFilter(RedisTemplate<String, String> redisTemplate) {
+    public RateLimiterFilter(RedisTemplate<String, String> redisTemplate, int trustedProxyHops) {
         this.redisTemplate = redisTemplate;
+        this.trustedProxyHops = trustedProxyHops;
     }
 
     @Override
@@ -42,8 +44,13 @@ public class RateLimiterFilter extends OncePerRequestFilter {
 
         String bucket = bucketFor(request);
         if (bucket != null) {
-            String key = "rate_limit:" + bucket + ":" + extractIpAddress(request);
-            Long requests = redisTemplate.execute(INCR_WITH_TTL, List.of(key), String.valueOf(WINDOW_SECONDS));
+            String key = "rate_limit:" + bucket + ":" + com.ajinkya.linky.util.ClientIp.resolve(request, trustedProxyHops);
+            Long requests = null;
+            try {
+                requests = redisTemplate.execute(INCR_WITH_TTL, List.of(key), String.valueOf(WINDOW_SECONDS));
+            } catch (Exception e) {
+                logger.warn("Rate limiter unavailable, failing open: " + e);
+            }
 
             if (requests != null && requests > MAX_REQUESTS) {
                 response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
@@ -72,13 +79,5 @@ public class RateLimiterFilter extends OncePerRequestFilter {
         }
         if (uri.endsWith("/unlock")) return "unlock";
         return null;
-    }
-
-    private String extractIpAddress(HttpServletRequest request) {
-        String xForwardedFor = request.getHeader("X-Forwarded-For");
-        if (xForwardedFor != null && !xForwardedFor.isBlank()) {
-            return xForwardedFor.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
     }
 }
