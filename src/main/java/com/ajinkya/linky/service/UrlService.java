@@ -117,7 +117,7 @@ public class UrlService {
             url.setShortCode(customAlias);
             url.setCustomAlias(customAlias);
         } else {
-            url.setShortCode(Base62Encoder.encode(url.getId()));
+            url.setShortCode(generateUniqueShortCode());
         }
 
         url = urlRepository.save(url);
@@ -224,6 +224,19 @@ public class UrlService {
         return mapToResponse(urlRepository.save(url));
     }
 
+    private static final int SHORT_CODE_LENGTH = 7;
+
+    /** Random code with a uniqueness check; 62^7 space makes retries vanishingly rare. */
+    private String generateUniqueShortCode() {
+        for (int attempt = 0; attempt < 5; attempt++) {
+            String code = Base62Encoder.random(SHORT_CODE_LENGTH);
+            if (!urlRepository.existsByShortCode(code)) {
+                return code;
+            }
+        }
+        throw new IllegalStateException("Could not generate a unique short code");
+    }
+
     public UrlResponse duplicateUrl(String shortCode, User user) {
         Url original = urlRepository.findByShortCodeAndUser(shortCode, user).orElseThrow(() -> new ResourceNotFoundException("URL not found"));
         
@@ -241,7 +254,7 @@ public class UrlService {
                 .build();
                 
         duplicate = urlRepository.save(duplicate);
-        duplicate.setShortCode(Base62Encoder.encode(duplicate.getId()));
+        duplicate.setShortCode(generateUniqueShortCode());
         duplicate = urlRepository.save(duplicate);
         
         redisService.save(duplicate.getShortCode(), duplicate.getOriginalUrl());

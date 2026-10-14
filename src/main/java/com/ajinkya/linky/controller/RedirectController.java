@@ -116,6 +116,14 @@ public class RedirectController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         
+        if (url.getIsOneTime()) {
+            if (urlRepository.deactivateIfActive(url.getId()) == 0) {
+                throw new ResourceNotFoundException("Link is no longer active");
+            }
+            redisService.delete(shortCode);
+            return ResponseEntity.ok(new UnlockResponse(url.getOriginalUrl()));
+        }
+
         return ResponseEntity.ok(new UnlockResponse(urlService.getOriginalUrl(shortCode)));
     }
 
