@@ -8,6 +8,7 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -35,12 +36,12 @@ public class LinkCache {
 
     private static final Logger log = LoggerFactory.getLogger(LinkCache.class);
 
-    private static final String PREFIX = "link:";
     private static final Duration L2_TTL = Duration.ofMinutes(10);
     private static final Duration L2_NEGATIVE_TTL = Duration.ofSeconds(60);
 
     private final RedisTemplate<String, String> redisTemplate;
     private final ObjectMapper mapper;
+    private final String prefix;
     private final Cache<String, CachedLink> l1 = Caffeine.newBuilder()
             .maximumSize(10_000)
             .expireAfterWrite(Duration.ofSeconds(5))
@@ -50,9 +51,11 @@ public class LinkCache {
     private final Counter l2Hit;
     private final Counter dbLoad;
 
-    public LinkCache(RedisTemplate<String, String> redisTemplate, ObjectMapper mapper, MeterRegistry registry) {
+    public LinkCache(RedisTemplate<String, String> redisTemplate, ObjectMapper mapper, MeterRegistry registry,
+                     @Value("${app.redis-key-prefix:}") String keyPrefix) {
         this.redisTemplate = redisTemplate;
         this.mapper = mapper;
+        this.prefix = keyPrefix + "link:";
         this.l1Hit = registry.counter("linky.cache.lookups", "layer", "l1");
         this.l2Hit = registry.counter("linky.cache.lookups", "layer", "l2");
         this.dbLoad = registry.counter("linky.cache.lookups", "layer", "db");
@@ -82,7 +85,7 @@ public class LinkCache {
     public void invalidate(String code) {
         l1.invalidate(code);
         try {
-            redisTemplate.delete(PREFIX + code);
+            redisTemplate.delete(prefix + code);
         } catch (Exception e) {
             log.warn("Redis invalidate failed for {}: {}", code, e.toString());
         }
@@ -90,7 +93,7 @@ public class LinkCache {
 
     private CachedLink readL2(String code) {
         try {
-            String json = redisTemplate.opsForValue().get(PREFIX + code);
+            String json = redisTemplate.opsForValue().get(prefix + code);
             return json == null ? null : mapper.readValue(json, CachedLink.class);
         } catch (Exception e) {
             log.warn("Redis read failed for {}, falling back to database: {}", code, e.toString());
@@ -105,7 +108,7 @@ public class LinkCache {
                 long untilExpiry = link.expiresAtEpochSecond() - Instant.now().getEpochSecond();
                 ttl = Duration.ofSeconds(Math.max(1, Math.min(ttl.toSeconds(), untilExpiry)));
             }
-            redisTemplate.opsForValue().set(PREFIX + code, mapper.writeValueAsString(link), ttl);
+            redisTemplate.opsForValue().set(prefix + code, mapper.writeValueAsString(link), ttl);
         } catch (Exception e) {
             log.warn("Redis write failed for {}: {}", code, e.toString());
         }

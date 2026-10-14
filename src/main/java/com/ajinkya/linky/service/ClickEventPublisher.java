@@ -30,7 +30,7 @@ import java.util.Map;
 @Service
 public class ClickEventPublisher {
 
-    public static final String STREAM = "linky:clicks";
+    public static final String STREAM_NAME = "linky:clicks";
     private static final long MAX_STREAM_LENGTH = 200_000;
     private static final int MAX_FIELD = 512;
 
@@ -39,6 +39,7 @@ public class ClickEventPublisher {
     private final RedisTemplate<String, String> redisTemplate;
     private final boolean geoEnabled;
     private final int trustedProxyHops;
+    private final String streamKey;
     private final String ipHashSalt;
     private final Counter published;
     private final Counter dropped;
@@ -47,13 +48,19 @@ public class ClickEventPublisher {
                                ObjectProvider<DatabaseReader> geoReader,
                                MeterRegistry registry,
                                @Value("${app.trusted-proxy-hops:0}") int trustedProxyHops,
-                               @Value("${app.ip-hash-salt:}") String ipHashSalt) {
+                               @Value("${app.ip-hash-salt:}") String ipHashSalt,
+                               @Value("${app.redis-key-prefix:}") String keyPrefix) {
         this.redisTemplate = redisTemplate;
         this.geoEnabled = geoReader.getIfAvailable() != null;
         this.trustedProxyHops = trustedProxyHops;
         this.ipHashSalt = ipHashSalt;
+        this.streamKey = keyPrefix + STREAM_NAME;
         this.published = registry.counter("linky.clicks.published");
         this.dropped = registry.counter("linky.clicks.dropped");
+    }
+
+    public String streamKey() {
+        return streamKey;
     }
 
     public void publish(Long urlId, HttpServletRequest request) {
@@ -70,7 +77,7 @@ public class ClickEventPublisher {
                 put(fields, "ip", ip);
             }
             redisTemplate.opsForStream().add(
-                    StreamRecords.string(fields).withStreamKey(STREAM),
+                    StreamRecords.string(fields).withStreamKey(streamKey),
                     XAddOptions.maxlen(MAX_STREAM_LENGTH).approximateTrimming(true));
             published.increment();
         } catch (Exception e) {

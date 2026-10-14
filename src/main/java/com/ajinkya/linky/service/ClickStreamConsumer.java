@@ -53,6 +53,7 @@ public class ClickStreamConsumer {
 
     private final RedisTemplate<String, String> redisTemplate;
     private final ClickService clickService;
+    private final String streamKey;
     private final String consumerName;
     private final Counter persisted;
     private final Counter failedBatches;
@@ -60,9 +61,11 @@ public class ClickStreamConsumer {
 
     public ClickStreamConsumer(RedisTemplate<String, String> redisTemplate,
                                ClickService clickService,
+                               ClickEventPublisher publisher,
                                MeterRegistry registry) {
         this.redisTemplate = redisTemplate;
         this.clickService = clickService;
+        this.streamKey = publisher.streamKey();
         this.consumerName = hostname() + "-" + UUID.randomUUID().toString().substring(0, 8);
         this.persisted = registry.counter("linky.clicks.persisted");
         this.failedBatches = registry.counter("linky.clicks.batch.failures");
@@ -78,7 +81,7 @@ public class ClickStreamConsumer {
             redisTemplate.execute((RedisCallback<Object>) connection -> {
                 try {
                     connection.streamCommands().xGroupCreate(
-                            ClickEventPublisher.STREAM.getBytes(StandardCharsets.UTF_8),
+                            streamKey.getBytes(StandardCharsets.UTF_8),
                             GROUP, ReadOffset.from("0"), true);
                 } catch (Exception alreadyExists) {
                     // BUSYGROUP: the group was created by another instance. Nothing to do.
@@ -97,7 +100,7 @@ public class ClickStreamConsumer {
                 List<MapRecord<String, Object, Object>> records = redisTemplate.opsForStream().read(
                         Consumer.from(GROUP, consumerName),
                         StreamReadOptions.empty().count(BATCH_SIZE),
-                        StreamOffset.create(ClickEventPublisher.STREAM, ReadOffset.lastConsumed()));
+                        StreamOffset.create(streamKey, ReadOffset.lastConsumed()));
                 if (records == null || records.isEmpty()) {
                     return;
                 }
@@ -117,7 +120,7 @@ public class ClickStreamConsumer {
     public void reclaimStale() {
         try {
             PendingMessages pending = redisTemplate.opsForStream()
-                    .pending(ClickEventPublisher.STREAM, GROUP, Range.unbounded(), 200);
+                    .pending(streamKey, GROUP, Range.unbounded(), 200);
             if (pending == null || pending.isEmpty()) {
                 return;
             }
@@ -140,7 +143,7 @@ public class ClickStreamConsumer {
             }
             if (!toClaim.isEmpty()) {
                 List<MapRecord<String, Object, Object>> claimed = redisTemplate.opsForStream().claim(
-                        ClickEventPublisher.STREAM, GROUP, consumerName, CLAIM_IDLE,
+                        streamKey, GROUP, consumerName, CLAIM_IDLE,
                         toClaim.toArray(new RecordId[0]));
                 if (claimed != null && !claimed.isEmpty()) {
                     log.info("Reclaimed {} stale click events", claimed.size());
@@ -182,9 +185,9 @@ public class ClickStreamConsumer {
             return;
         }
         RecordId[] array = ids.toArray(new RecordId[0]);
-        redisTemplate.opsForStream().acknowledge(ClickEventPublisher.STREAM, GROUP, array);
+        redisTemplate.opsForStream().acknowledge(streamKey, GROUP, array);
         // Entries are removed once handled so raw IPs (when geo is enabled) do not linger in Redis.
-        redisTemplate.opsForStream().delete(ClickEventPublisher.STREAM, array);
+        redisTemplate.opsForStream().delete(streamKey, array);
     }
 
     private static ClickEvent toEvent(Map<Object, Object> fields) {
@@ -207,7 +210,7 @@ public class ClickStreamConsumer {
 
     private double streamLength() {
         try {
-            Long size = redisTemplate.opsForStream().size(ClickEventPublisher.STREAM);
+            Long size = redisTemplate.opsForStream().size(streamKey);
             return size == null ? 0 : size;
         } catch (Exception e) {
             return Double.NaN;

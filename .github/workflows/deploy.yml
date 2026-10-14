@@ -1,0 +1,97 @@
+name: Deploy
+
+# Continuous delivery to Render. Runs only after CI has passed on main, waits for approval
+# (configure required reviewers on the "production" environment), triggers the deploy, waits
+# until the new commit is actually serving traffic, then runs the smoke test against production.
+#
+# Rollback: Actions > Deploy > Run workflow, and enter the commit SHA of a known-good release.
+#
+# One-time setup:
+#   - Render: turn Auto-Deploy OFF for the service, so only this pipeline deploys.
+#   - Render: Settings > Deploy Hook, copy the URL.
+#   - GitHub > Settings > Secrets and variables > Actions:
+#       secret   RENDER_DEPLOY_HOOK_URL   the deploy hook URL
+#       variable BACKEND_URL              e.g. https://your-app.onrender.com
+#   - GitHub > Settings > Environments > "production": add required reviewers.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Commit SHA to deploy (leave empty for the latest main). Use this to roll back.'
+        required: false
+        type: string
+
+# Never run two deploys at once, and never cancel one that is mid-flight.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to production
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ vars.BACKEND_URL }}
+    timeout-minutes: 30
+    env:
+      BACKEND_URL: ${{ vars.BACKEND_URL }}
+      DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+    steps:
+      - name: Resolve the commit to deploy
+        id: sha
+        env:
+          # Passed through env, never interpolated into the script (avoids injection via the input).
+          WANTED: ${{ inputs.ref || github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          case "$WANTED" in
+            *[!0-9a-fA-F]*|"") echo "::error::ref must be a commit SHA (hex characters only)"; exit 1;;
+          esac
+          echo "sha=$WANTED" >> "$GITHUB_OUTPUT"
+          echo "Deploying $WANTED"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.sha.outputs.sha }}
+
+      - name: Check configuration
+        run: |
+          [ -n "$BACKEND_URL" ] || { echo "::error::Repository variable BACKEND_URL is not set"; exit 1; }
+          [ -n "$DEPLOY_HOOK" ] || { echo "::error::Secret RENDER_DEPLOY_HOOK_URL is not set"; exit 1; }
+
+      - name: Trigger Render deploy
+        run: |
+          SEP='?'; case "$DEPLOY_HOOK" in *\?*) SEP='&';; esac
+          curl -fsS -X POST "${DEPLOY_HOOK}${SEP}ref=${{ steps.sha.outputs.sha }}" > /dev/null
+          echo "Deploy triggered"
+
+      - name: Wait until the new commit is live
+        run: |
+          WANT="${{ steps.sha.outputs.sha }}"
+          for i in $(seq 1 60); do
+            LIVE="$(curl -sf -m 15 "$BACKEND_URL/actuator/info" | python3 -c "import sys,json;print(json.load(sys.stdin).get('commit',''))" 2>/dev/null || true)"
+            echo "[$i/60] live commit: ${LIVE:-unreachable} (want ${WANT:0:7})"
+            if [ "$LIVE" = "$WANT" ]; then echo "New version is serving traffic"; exit 0; fi
+            sleep 15
+          done
+          echo "::error::Timed out waiting for $WANT to go live"; exit 1
+
+      - name: Smoke test production
+        run: bash scripts/smoke-test.sh "$BACKEND_URL"
+
+      - name: How to roll back
+        if: failure()
+        run: |
+          {
+            echo "### Deploy failed"
+            echo "Roll back: Actions > Deploy > Run workflow, with the SHA of the last good release."
+            echo "Previous images are in GHCR: \`ghcr.io/${{ github.repository }}:<sha>\`"
+          } >> "$GITHUB_STEP_SUMMARY"

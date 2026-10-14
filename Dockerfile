@@ -35,6 +35,9 @@ RUN mkdir -p /app/logs /app/uploads && chown -R linky:linky /app
 COPY --from=builder /app/target/*.jar app.jar
 RUN chown linky:linky app.jar
 
+ARG GIT_COMMIT=unknown
+ENV GIT_COMMIT=$GIT_COMMIT
+
 USER linky
 
 # Expose the port the app runs on

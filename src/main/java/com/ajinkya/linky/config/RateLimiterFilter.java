@@ -32,10 +32,12 @@ public class RateLimiterFilter extends OncePerRequestFilter {
 
     private final RedisTemplate<String, String> redisTemplate;
     private final int trustedProxyHops;
+    private final String keyPrefix;
 
-    public RateLimiterFilter(RedisTemplate<String, String> redisTemplate, int trustedProxyHops) {
+    public RateLimiterFilter(RedisTemplate<String, String> redisTemplate, int trustedProxyHops, String keyPrefix) {
         this.redisTemplate = redisTemplate;
         this.trustedProxyHops = trustedProxyHops;
+        this.keyPrefix = keyPrefix;
     }
 
     @Override
@@ -44,7 +46,7 @@ public class RateLimiterFilter extends OncePerRequestFilter {
 
         String bucket = bucketFor(request);
         if (bucket != null) {
-            String key = "rate_limit:" + bucket + ":" + com.ajinkya.linky.util.ClientIp.resolve(request, trustedProxyHops);
+            String key = keyPrefix + "rate_limit:" + bucket + ":" + com.ajinkya.linky.util.ClientIp.resolve(request, trustedProxyHops);
             Long requests = null;
             try {
                 requests = redisTemplate.execute(INCR_WITH_TTL, List.of(key), String.valueOf(WINDOW_SECONDS));

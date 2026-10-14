@@ -37,7 +37,7 @@ class LinkCacheTest {
         redis = mock(RedisTemplate.class);
         ops = mock(ValueOperations.class);
         when(redis.opsForValue()).thenReturn(ops);
-        cache = new LinkCache(redis, new ObjectMapper(), new SimpleMeterRegistry());
+        cache = new LinkCache(redis, new ObjectMapper(), new SimpleMeterRegistry(), "");
     }
 
     @Test
@@ -79,6 +79,13 @@ class LinkCacheTest {
 
         assertEquals(2, dbCalls.get());
         verify(redis).delete(eq("link:abc"));
+    }
+
+    @Test
+    void keyPrefixIsolatesEnvironmentsSharingOneRedis() {
+        LinkCache prod = new LinkCache(redis, new ObjectMapper(), new SimpleMeterRegistry(), "prod:");
+        prod.invalidate("abc");
+        verify(redis).delete(eq("prod:link:abc"));
     }
 
     @Test

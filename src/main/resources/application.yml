@@ -26,6 +26,9 @@ app:
   cookie-secure: ${COOKIE_SECURE:true}
   # Number of reverse proxies in front of the app that append to X-Forwarded-For (0 = ignore the header).
   trusted-proxy-hops: ${TRUSTED_PROXY_HOPS:0}
+  # Prepended to every Redis key (cache, rate limits, click stream). Set it per environment
+  # (e.g. "prod:") whenever staging and production share one Redis instance.
+  redis-key-prefix: ${REDIS_KEY_PREFIX:}
   # Secret mixed into stored IP hashes. Changing it breaks unique-visitor continuity.
   ip-hash-salt: ${IP_HASH_SALT:}
   # Shared secret for scraping /actuator/prometheus (sent as X-Metrics-Token). Blank = endpoint closed.
@@ -51,11 +54,17 @@ server:
     mime-types: application/json,application/xml,text/html,text/plain,text/css,application/javascript
     min-response-size: 1024
 
+info:
+  commit: ${GIT_COMMIT:${RENDER_GIT_COMMIT:unknown}}
+
 management:
   endpoints:
     web:
       exposure:
         include: health,info,prometheus
+  info:
+    env:
+      enabled: true
   endpoint:
     health:
       show-details: never

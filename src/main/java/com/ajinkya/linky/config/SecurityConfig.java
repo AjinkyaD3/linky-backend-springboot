@@ -36,6 +36,9 @@ public class SecurityConfig {
     @Value("${app.trusted-proxy-hops:0}")
     private int trustedProxyHops;
 
+    @Value("${app.redis-key-prefix:}")
+    private String redisKeyPrefix;
+
     @Value("${app.metrics-token:}")
     private String metricsToken;
 
@@ -49,7 +52,7 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         
         // Add our rate limiter filter before the JWT filter
-        RateLimiterFilter rateLimiterFilter = new RateLimiterFilter(redisTemplate, trustedProxyHops);
+        RateLimiterFilter rateLimiterFilter = new RateLimiterFilter(redisTemplate, trustedProxyHops, redisKeyPrefix);
         
         http
             .csrf(AbstractHttpConfigurer::disable)
@@ -72,6 +75,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/api/health/**").permitAll()
                 .requestMatchers("/actuator/health/**").permitAll()
+                .requestMatchers("/actuator/info").permitAll() // commit sha only; lets deploys verify the live build
                 // Prometheus scrape endpoint: closed unless a shared token is configured and presented.
                 .requestMatchers("/actuator/prometheus").access((authentication, context) ->
                         new org.springframework.security.authorization.AuthorizationDecision(
