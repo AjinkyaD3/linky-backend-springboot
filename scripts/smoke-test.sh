@@ -56,7 +56,8 @@ expect "QR code image" 200 "$(code "$BASE/api/url/$CODE/qrcode" -H "$AUTH")"
 
 echo "- one-time link: exactly one of 10 concurrent clicks wins"
 OT="$(mk '{"originalUrl":"https://example.com/once","isOneTime":true}')"
-WINNERS="$(for _ in 1 2 3 4 5 6 7 8 9 10; do location "$BASE/$OT" & done | grep -c '^https://example.com/once')"
+# one result per line: `location` prints no newline, so parallel outputs would otherwise run together
+WINNERS="$(for _ in 1 2 3 4 5 6 7 8 9 10; do { location "$BASE/$OT"; echo; } & done | grep -c '^https://example.com/once')"
 wait
 expect "one-time winners" 1 "$WINNERS"
 
@@ -66,6 +67,43 @@ expect "redirects to unlock page" "/unlock/$PW" "$(location "$BASE/$PW" | sed 's
 expect "wrong password" 403 "$(code -X POST "$BASE/$PW/unlock" -H "$JSON" -d '{"password":"nope"}')"
 UNLOCK="$(curl -s -m 20 -X POST "$BASE/$PW/unlock" -H "$JSON" -d '{"password":"open-sesame-1"}' | json_get originalUrl)"
 expect "correct password reveals target" "https://example.com/secret" "$UNLOCK"
+
+echo "- edit destination (short code and cache stay consistent)"
+ED="$(mk '{"originalUrl":"https://example.com/before"}')"
+expect "before edit" "https://example.com/before" "$(location "$BASE/$ED")"
+expect "edit destination" 200 "$(code -X PUT "$BASE/api/url/$ED" -H "$JSON" -H "$AUTH" -d '{"originalUrl":"https://example.com/after"}')"
+expect "after edit (cache invalidated)" "https://example.com/after" "$(location "$BASE/$ED")"
+expect "edit rejects javascript: target" 400 "$(code -X PUT "$BASE/api/url/$ED" -H "$JSON" -H "$AUTH" -d '{"originalUrl":"javascript:alert(1)"}')"
+
+echo "- routing rules (device / os)"
+IPHONE_UA='Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1'
+RT="$(mk '{"originalUrl":"https://example.com/web","routingRules":[{"type":"os","value":"ios","url":"https://apps.example.com/ios"}]}')"
+expect "iPhone is routed" "https://apps.example.com/ios" "$(location "$BASE/$RT" -A "$IPHONE_UA")"
+expect "desktop gets default" "https://example.com/web" "$(location "$BASE/$RT" -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120 Safari/537.36')"
+
+echo "- expiry, bulk create, QR options"
+FUTURE="$("$PY" -c "import datetime;print((datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(days=2)).strftime('%Y-%m-%dT%H:%M:%SZ'))")"
+EXP="$(curl -s -m 20 -X POST "$BASE/api/url" -H "$JSON" -H "$AUTH" -d "{\"originalUrl\":\"https://example.com/exp\",\"expiresAt\":\"$FUTURE\"}" | json_get expiresAt)"
+expect "expiry stored and returned" "$FUTURE" "$EXP"
+BULK="$(curl -s -m 30 -X POST "$BASE/api/url/bulk" -H "$JSON" -H "$AUTH" -d '{"links":[{"originalUrl":"https://example.com/b1"},{"originalUrl":"nope"},{"originalUrl":"https://example.com/b3"}]}' | "$PY" -c "import sys,json;r=json.load(sys.stdin);print(''.join('1' if x['success'] else '0' for x in r))")"
+expect "bulk create per-row results" "101" "$BULK"
+expect "QR with custom colours" 200 "$(code "$BASE/api/url/$CODE/qrcode?fg=1a2b3c&bg=ffeeaa&size=300")"
+expect "QR rejects bad colour" 400 "$(code "$BASE/api/url/$CODE/qrcode?fg=red")"
+
+echo "- link-in-bio page"
+SLUG="smoke-$RANDOM$RANDOM"
+PAGE_LINK="$(curl -s -m 20 -X POST "$BASE/api/pages" -H "$JSON" -H "$AUTH" \
+  -d "{\"slug\":\"$SLUG\",\"title\":\"Smoke page\",\"links\":[{\"label\":\"One\",\"url\":\"https://example.com/page-link\"}]}" \
+  | "$PY" -c "import sys,json;print(json.load(sys.stdin)['links'][0]['shortCode'])" 2>/dev/null)"
+if [ -n "$PAGE_LINK" ]; then pass "create page"; else fail "create page" "no link in response"; fi
+expect "public page readable without auth" 200 "$(code "$BASE/api/public/pages/$SLUG")"
+expect "page button is a tracked short link" "https://example.com/page-link" "$(location "$BASE/$PAGE_LINK")"
+expect "unknown page" 404 "$(code "$BASE/api/public/pages/no-such-page-xyz")"
+
+echo "- webhooks API"
+expect "list webhooks" 200 "$(code "$BASE/api/webhooks" -H "$AUTH")"
+expect "webhooks require auth" 403 "$(code "$BASE/api/webhooks")"
+expect "rejects non-https endpoint" 400 "$(code -X POST "$BASE/api/webhooks" -H "$JSON" -H "$AUTH" -d '{"url":"ftp://example.com/h","events":["link.created"]}')"
 
 echo "- analytics pipeline (click -> stream -> consumer -> database)"
 CLICKS=0

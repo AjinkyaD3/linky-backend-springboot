@@ -32,10 +32,14 @@ public class UserController {
     private final ApiKeyRepository apiKeyRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
+    private final com.ajinkya.linky.repository.BioPageRepository bioPageRepository;
+    private final com.ajinkya.linky.repository.WebhookRepository webhookRepository;
 
     public UserController(UserRepository userRepository, PasswordEncoder passwordEncoder, FileStorageService fileStorageService,
                            UrlRepository urlRepository, TagRepository tagRepository, ApiKeyRepository apiKeyRepository,
-                           RefreshTokenRepository refreshTokenRepository, PasswordResetTokenRepository passwordResetTokenRepository) {
+                           RefreshTokenRepository refreshTokenRepository, PasswordResetTokenRepository passwordResetTokenRepository,
+                           com.ajinkya.linky.repository.BioPageRepository bioPageRepository,
+                           com.ajinkya.linky.repository.WebhookRepository webhookRepository) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.fileStorageService = fileStorageService;
@@ -44,6 +48,8 @@ public class UserController {
         this.apiKeyRepository = apiKeyRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.passwordResetTokenRepository = passwordResetTokenRepository;
+        this.bioPageRepository = bioPageRepository;
+        this.webhookRepository = webhookRepository;
     }
 
     @GetMapping("/me")
@@ -62,6 +68,7 @@ public class UserController {
     }
 
     @PutMapping("/me/password")
+    @Transactional // the password update and the session revocation must succeed or fail together
     public ResponseEntity<Void> changePassword(@AuthenticationPrincipal User user, @Valid @RequestBody ChangePasswordRequest request) {
         if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
             throw new IllegalArgumentException("Incorrect current password");
@@ -69,6 +76,8 @@ public class UserController {
         
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
+        // sign out everywhere: a stolen session must not survive a password change
+        refreshTokenRepository.deleteByUser(user);
         
         return ResponseEntity.ok().build();
     }
@@ -78,6 +87,8 @@ public class UserController {
     public ResponseEntity<Void> deleteAccount(@AuthenticationPrincipal User user) {
         // Clear everything that has a foreign key back to this user before deleting it -
         // none of these relations cascade at the DB or JPA level.
+        webhookRepository.deleteByUser(user);
+        bioPageRepository.deleteByUser(user);
         urlRepository.forceDeleteUrlClicksByUser(user.getId());
         urlRepository.forceDeleteUrlTagsByUser(user.getId());
         urlRepository.forceDeleteUrlsByUser(user.getId());

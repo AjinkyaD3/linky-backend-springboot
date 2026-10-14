@@ -39,6 +39,7 @@ public class JwtUtil {
 
     public String generateRefreshToken(String email) {
         return Jwts.builder()
+                .id(java.util.UUID.randomUUID().toString()) // jti: two tokens issued in the same second must differ
                 .subject(email)
                 .issuedAt(new Date(System.currentTimeMillis()))
                 .expiration(new Date(System.currentTimeMillis() + refreshTokenExpiry))

@@ -108,7 +108,7 @@ public class UserControllerTest extends BaseIntegrationTest {
                 "file",
                 "test-avatar.png",
                 MediaType.IMAGE_PNG_VALUE,
-                "dummy image content".getBytes()
+                new byte[]{(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0}
         );
 
         mockMvc.perform(multipart("/api/users/me/avatar")

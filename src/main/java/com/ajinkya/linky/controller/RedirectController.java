@@ -40,6 +40,10 @@ public class RedirectController {
     @Value("${app.frontend-url}")
     private String frontendUrl;
 
+    /** Header a CDN/proxy sets with the visitor's ISO country (e.g. CF-IPCountry). Blank = country rules never match. */
+    @Value("${app.country-header:}")
+    private String countryHeader;
+
     public RedirectController(UrlService urlService, ClickEventPublisher clickPublisher, UrlRepository urlRepository, PasswordEncoder passwordEncoder, LinkCache linkCache) {
         this.urlService = urlService;
         this.clickPublisher = clickPublisher;
@@ -97,7 +101,10 @@ public class RedirectController {
         clickPublisher.publish(link.id(), request);
 
         HttpHeaders headers = new HttpHeaders();
-        headers.setLocation(URI.create(link.originalUrl()));
+        String country = countryHeader == null || countryHeader.isBlank() ? null : request.getHeader(countryHeader);
+        String target = com.ajinkya.linky.util.RoutingRules.resolve(
+                link.routingRules(), link.originalUrl(), request.getHeader("User-Agent"), country);
+        headers.setLocation(URI.create(target));
         return new ResponseEntity<>(headers, HttpStatus.FOUND);
     }
 
@@ -113,7 +120,8 @@ public class RedirectController {
                         url.getUser() == null ? null : url.getUser().getId(),
                         url.getExpiresAt() == null ? null
                                 : url.getExpiresAt().atZone(java.time.ZoneId.systemDefault()).toEpochSecond(),
-                        false))
+                        false,
+                        com.ajinkya.linky.util.RoutingRules.parse(url.getRoutingRules())))
                 .orElseGet(CachedLink::notFound);
     }
 

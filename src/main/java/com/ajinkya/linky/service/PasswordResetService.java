@@ -28,16 +28,19 @@ public class PasswordResetService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
+    private final com.ajinkya.linky.repository.RefreshTokenRepository refreshTokenRepository;
 
     @Value("${app.frontend-url}")
     private String frontendUrl;
 
     public PasswordResetService(PasswordResetTokenRepository tokenRepository, UserRepository userRepository,
-                                 PasswordEncoder passwordEncoder, EmailService emailService) {
+                                 PasswordEncoder passwordEncoder, EmailService emailService,
+                                 com.ajinkya.linky.repository.RefreshTokenRepository refreshTokenRepository) {
         this.tokenRepository = tokenRepository;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.emailService = emailService;
+        this.refreshTokenRepository = refreshTokenRepository;
     }
 
     public void createResetToken(String email) {
@@ -75,6 +78,9 @@ public class PasswordResetService {
         User user = token.getUser();
         user.setPassword(passwordEncoder.encode(newPassword));
         userRepository.save(user);
+
+        // a reset usually means the old password may be compromised: end every existing session
+        refreshTokenRepository.deleteByUser(user);
 
         tokenRepository.delete(token);
     }

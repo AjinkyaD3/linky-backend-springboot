@@ -75,6 +75,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/api/health/**").permitAll()
                 .requestMatchers("/actuator/health/**").permitAll()
+                .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll() // 404 unless API_DOCS_ENABLED
+                .requestMatchers(HttpMethod.GET, "/api/public/pages/*").permitAll()
                 .requestMatchers("/actuator/info").permitAll() // commit sha only; lets deploys verify the live build
                 // Prometheus scrape endpoint: closed unless a shared token is configured and presented.
                 .requestMatchers("/actuator/prometheus").access((authentication, context) ->

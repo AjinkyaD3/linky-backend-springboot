@@ -70,3 +70,7 @@ backend_audit_report.md
 CLAUDE.md
 AGENT.md
 AGENTS.md
+
+# GeoIP databases (large, downloaded by scripts/download-geoip.sh)
+geoip/
+*.mmdb

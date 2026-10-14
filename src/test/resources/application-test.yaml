@@ -29,6 +29,11 @@ management:
       enabled: false
 
 app:
+  auth:
+    refresh-reuse-grace-seconds: 0
+  webhooks:
+    dispatcher:
+      enabled: false
   clicks:
     consumer:
       enabled: false

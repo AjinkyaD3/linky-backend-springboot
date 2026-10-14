@@ -29,7 +29,7 @@ class LinkCacheTest {
     private LinkCache cache;
 
     private static CachedLink link(long id) {
-        return new CachedLink(id, "https://example.com/" + id, true, false, false, false, null, null, false);
+        return new CachedLink(id, "https://example.com/" + id, true, false, false, false, null, null, false, null);
     }
 
     @BeforeEach
@@ -114,7 +114,7 @@ class LinkCacheTest {
     @Test
     void expiredLinkIsDetected() {
         CachedLink past = new CachedLink(1L, "https://e.com", true, false, false, false, null,
-                java.time.Instant.now().getEpochSecond() - 5, false);
+                java.time.Instant.now().getEpochSecond() - 5, false, null);
         assertTrue(past.isExpired());
         assertFalse(link(1).isExpired());
     }

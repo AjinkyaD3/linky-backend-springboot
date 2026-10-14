@@ -26,10 +26,15 @@ public class UrlController {
 
     private final UrlService urlService;
     private final QRCodeService qrCodeService;
+    private final jakarta.validation.Validator validator;
 
-    public UrlController(UrlService urlService, QRCodeService qrCodeService) {
+    @org.springframework.beans.factory.annotation.Value("${app.public-base-url:http://localhost:8080}")
+    private String publicBaseUrl;
+
+    public UrlController(UrlService urlService, QRCodeService qrCodeService, jakarta.validation.Validator validator) {
         this.urlService = urlService;
         this.qrCodeService = qrCodeService;
+        this.validator = validator;
     }
 
     /**
@@ -40,7 +45,7 @@ public class UrlController {
 
         return urlService.findResponseByIdAndUser(id, user)
                 .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+                .orElseThrow(() -> new com.ajinkya.linky.exception.ResourceNotFoundException("URL not found"));
     }
 
     /**
@@ -58,6 +63,35 @@ public class UrlController {
         UrlResponse savedUrl = urlService.createShortUrl(request, user);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(savedUrl);
+    }
+
+    /**
+     * Create up to 100 links in one call. Each row succeeds or fails on its own, so one bad URL
+     * does not lose the rest; the response has one result per input row, in order.
+     */
+    @PostMapping("/bulk")
+    public ResponseEntity<List<com.ajinkya.linky.dto.BulkResult>> bulkCreate(
+            @Valid @RequestBody com.ajinkya.linky.dto.BulkCreateRequest request,
+            @AuthenticationPrincipal User user) {
+
+        List<com.ajinkya.linky.dto.BulkResult> results = new java.util.ArrayList<>();
+        List<CreateUrlRequest> rows = request.getLinks();
+        for (int i = 0; i < rows.size(); i++) {
+            CreateUrlRequest row = rows.get(i);
+            try {
+                if (row == null) {
+                    throw new IllegalArgumentException("Empty row");
+                }
+                var violations = validator.validate(row);
+                if (!violations.isEmpty()) {
+                    throw new IllegalArgumentException(violations.iterator().next().getMessage());
+                }
+                results.add(new com.ajinkya.linky.dto.BulkResult(i, true, urlService.createShortUrl(row, user), null));
+            } catch (RuntimeException e) {
+                results.add(new com.ajinkya.linky.dto.BulkResult(i, false, null, e.getMessage()));
+            }
+        }
+        return ResponseEntity.ok(results);
     }
 
     @GetMapping("/my")
@@ -104,30 +138,37 @@ public class UrlController {
         return ResponseEntity.ok(updated);
     }
 
+    /**
+     * QR code for a short link. Options: format=png|svg, size (100-1000), fg / bg (hex colours),
+     * margin (0-10 quiet-zone modules), download=true to force a file download.
+     */
     @GetMapping("/{shortCode}/qrcode")
     public ResponseEntity<byte[]> getQRCode(
             @PathVariable String shortCode,
-            @RequestParam(required = false, defaultValue = "png") String format) {
-        // Just verify it exists
+            @RequestParam(required = false, defaultValue = "png") String format,
+            @RequestParam(required = false) Integer size,
+            @RequestParam(required = false) String fg,
+            @RequestParam(required = false) String bg,
+            @RequestParam(required = false) Integer margin,
+            @RequestParam(required = false, defaultValue = "false") boolean download) {
         if (!urlService.existsByShortCode(shortCode)) {
-            return ResponseEntity.notFound().build();
+            throw new com.ajinkya.linky.exception.ResourceNotFoundException("Short code not found");
         }
 
-        String url = "http://localhost:8080/" + shortCode; // We should probably make base URL configurable later
-        
+        QRCodeService.Style style = qrCodeService.style(size, fg, bg, margin);
+        String target = publicBaseUrl.replaceAll("/+$", "") + "/" + shortCode;
+        String disposition = download ? "attachment" : "inline";
+
         if ("svg".equalsIgnoreCase(format)) {
-            String svg = qrCodeService.generateQRCodeSvg(url, 250, 250);
             return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"qrcode.svg\"")
+                    .header(HttpHeaders.CONTENT_DISPOSITION, disposition + "; filename=\"" + shortCode + ".svg\"")
                     .contentType(MediaType.valueOf("image/svg+xml"))
-                    .body(svg.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        } else {
-            byte[] qrImage = qrCodeService.generateQRCodeImage(url, 250, 250);
-            return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"qrcode.png\"")
-                    .contentType(MediaType.IMAGE_PNG)
-                    .body(qrImage);
+                    .body(qrCodeService.generateSvg(target, style).getBytes(java.nio.charset.StandardCharsets.UTF_8));
         }
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, disposition + "; filename=\"" + shortCode + ".png\"")
+                .contentType(MediaType.IMAGE_PNG)
+                .body(qrCodeService.generatePng(target, style));
     }
 
     /**
@@ -136,14 +177,10 @@ public class UrlController {
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteUrl(@PathVariable Long id, @AuthenticationPrincipal User user) {
 
-        // Verify ownership
-        Url url = urlService.findById(id).orElse(null);
-        if (url == null) {
-            return ResponseEntity.notFound().build();
-        }
-        if (url.getUser() == null || !url.getUser().getId().equals(user.getId())) {
-            return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN).build();
-        }
+        // Same answer for "does not exist" and "not yours", so ids cannot be probed.
+        Url url = urlService.findById(id)
+                .filter(u -> u.getUser() != null && u.getUser().getId().equals(user.getId()))
+                .orElseThrow(() -> new com.ajinkya.linky.exception.ResourceNotFoundException("URL not found"));
 
         urlService.delete(id);
 

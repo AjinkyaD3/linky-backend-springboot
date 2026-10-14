@@ -5,6 +5,10 @@ spring:
     active: ${SPRING_PROFILES_ACTIVE:dev}
   lifecycle:
     timeout-per-shutdown-phase: 20s
+  servlet:
+    multipart:
+      max-file-size: 2MB
+      max-request-size: 3MB
   data:
     redis:
       # Never let a slow Redis hang request threads; callers degrade to the database.
@@ -26,6 +30,16 @@ app:
   cookie-secure: ${COOKIE_SECURE:true}
   # Number of reverse proxies in front of the app that append to X-Forwarded-For (0 = ignore the header).
   trusted-proxy-hops: ${TRUSTED_PROXY_HOPS:0}
+  auth:
+    # A rotated-out refresh token is accepted again for this long (two tabs refreshing together); after it, reuse revokes the session.
+    refresh-reuse-grace-seconds: ${REFRESH_REUSE_GRACE_SECONDS:30}
+  # Public origin of the short links (what QR codes encode), e.g. https://lnk.example.com
+  # Path to a MaxMind-format city database (see scripts/download-geoip.sh). Blank = geo analytics off.
+  geoip:
+    db-path: ${GEOIP_DB_PATH:}
+  public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
+  # Header set by your CDN/proxy with the visitor's ISO country, e.g. CF-IPCountry. Blank disables country rules.
+  country-header: ${COUNTRY_HEADER:}
   # Prepended to every Redis key (cache, rate limits, click stream). Set it per environment
   # (e.g. "prod:") whenever staging and production share one Redis instance.
   redis-key-prefix: ${REDIS_KEY_PREFIX:}
@@ -33,6 +47,13 @@ app:
   ip-hash-salt: ${IP_HASH_SALT:}
   # Shared secret for scraping /actuator/prometheus (sent as X-Metrics-Token). Blank = endpoint closed.
   metrics-token: ${METRICS_TOKEN:}
+  webhooks:
+    # Allow http:// and private-network endpoints. Local development only; never enable in production.
+    allow-insecure: ${WEBHOOKS_ALLOW_INSECURE:false}
+    # Delay before each retry; the number of entries is the number of retries.
+    retry-seconds: ${WEBHOOK_RETRY_SECONDS:10,60,300,1800,7200}
+    dispatcher:
+      enabled: ${WEBHOOK_DISPATCHER_ENABLED:true}
   clicks:
     consumer:
       enabled: ${CLICK_CONSUMER_ENABLED:true}
@@ -76,3 +97,9 @@ management:
 logging:
   pattern:
     level: "%5p [%X{requestId:-}]"
+
+springdoc:
+  api-docs:
+    enabled: ${API_DOCS_ENABLED:false}
+  swagger-ui:
+    enabled: ${API_DOCS_ENABLED:false}

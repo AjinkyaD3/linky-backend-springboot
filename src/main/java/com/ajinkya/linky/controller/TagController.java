@@ -58,10 +58,8 @@ public class TagController {
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteTag(@AuthenticationPrincipal User user, @PathVariable Long id) {
-        Tag tag = tagRepository.findByIdAndUser(id, user).orElse(null);
-        if (tag == null) {
-            return ResponseEntity.notFound().build();
-        }
+        Tag tag = tagRepository.findByIdAndUser(id, user)
+                .orElseThrow(() -> new com.ajinkya.linky.exception.ResourceNotFoundException("Tag not found"));
         tagRepository.delete(tag);
         return ResponseEntity.noContent().build();
     }

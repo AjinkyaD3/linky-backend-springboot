@@ -79,7 +79,8 @@ public class ApiKeyController {
                 .orElseThrow(() -> new ResourceNotFoundException("API Key not found"));
                 
         if (!apiKey.getUser().getId().equals(user.getId())) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            // same answer as "does not exist": do not reveal that someone else's key id exists
+            throw new ResourceNotFoundException("API Key not found");
         }
         
         apiKeyRepository.delete(apiKey);

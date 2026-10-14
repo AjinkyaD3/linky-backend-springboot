@@ -45,9 +45,18 @@ management:
 app:
   # Plain http locally, so the auth cookie must not be marked Secure.
   cookie-secure: false
+  webhooks:
+    # local only: lets you point a webhook at a receiver on localhost
+    allow-insecure: true
 
 jwt:
   # Local-only throwaway secret. Production injects JWT_SECRET from the env.
   secret: ${JWT_SECRET:local-development-only-secret-key-not-used-anywhere-else-min-256-bits}
   access-token-expiry: 900000
   refresh-token-expiry: 604800000
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true

@@ -13,10 +13,11 @@ public record CachedLink(
         boolean isPrivate,
         Long ownerId,
         Long expiresAtEpochSecond,
-        boolean missing) {
+        boolean missing,
+        java.util.List<RoutingRule> routingRules) {
 
     public static CachedLink notFound() {
-        return new CachedLink(null, null, false, false, false, false, null, null, true);
+        return new CachedLink(null, null, false, false, false, false, null, null, true, null);
     }
 
     public boolean isExpired() {

@@ -89,7 +89,7 @@ public class ApiKeyControllerTest extends BaseIntegrationTest {
     }
     
     @Test
-    void deleteApiKey_NotOwner_ReturnsForbidden() throws Exception {
+    void deleteApiKey_NotOwner_ReturnsNotFound() throws Exception {
         // Create one as testUser
         CreateApiKeyRequest req = new CreateApiKeyRequest();
         req.setName("Test Key");
@@ -104,8 +104,8 @@ public class ApiKeyControllerTest extends BaseIntegrationTest {
         
         // Admin tries to delete it
         mockMvc.perform(delete("/api/keys/" + keyId)
-                .header("Authorization", adminToken)) // Not owner
-                .andExpect(status().isForbidden());
+                .header("Authorization", adminToken)) // Not owner: same answer as "does not exist"
+                .andExpect(status().isNotFound());
                 
         // Still exists
         assertTrue(apiKeyRepository.findById(keyId).isPresent());

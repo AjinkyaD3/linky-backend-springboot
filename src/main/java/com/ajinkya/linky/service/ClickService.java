@@ -39,16 +39,22 @@ public class ClickService {
     private final JdbcTemplate jdbcTemplate;
     private final Parser uaParser;
     private final DatabaseReader databaseReader;
+    private final WebhookService webhookService;
+
+    /** Click totals that trigger a link.milestone webhook. */
+    static final long[] MILESTONES = {10, 100, 1_000, 10_000, 100_000, 1_000_000};
 
     @Autowired
     public ClickService(UrlRepository urlRepository,
                         JdbcTemplate jdbcTemplate,
                         Parser uaParser,
-                        @Autowired(required = false) DatabaseReader databaseReader) {
+                        @Autowired(required = false) DatabaseReader databaseReader,
+                        WebhookService webhookService) {
         this.urlRepository = urlRepository;
         this.jdbcTemplate = jdbcTemplate;
         this.uaParser = uaParser;
         this.databaseReader = databaseReader;
+        this.webhookService = webhookService;
     }
 
     /**
@@ -63,8 +69,9 @@ public class ClickService {
             return 0;
         }
         Set<Long> urlIds = events.stream().map(ClickEvent::urlId).collect(Collectors.toSet());
-        Set<Long> existing = urlRepository.findAllById(urlIds).stream()
-                .map(Url::getId).collect(Collectors.toSet());
+        Map<Long, Url> urls = urlRepository.findAllById(urlIds).stream()
+                .collect(Collectors.toMap(Url::getId, u -> u));
+        Set<Long> existing = urls.keySet();
 
         List<ClickEvent> valid = events.stream().filter(e -> existing.contains(e.urlId())).toList();
         if (valid.isEmpty()) {
@@ -98,8 +105,25 @@ public class ClickService {
         for (ClickEvent e : valid) {
             perUrl.merge(e.urlId(), 1L, Long::sum);
         }
-        perUrl.forEach(urlRepository::incrementClickCountBy);
+        perUrl.forEach((id, n) -> {
+            urlRepository.incrementClickCountBy(id, n);
+            publishMilestones(urls.get(id), n);
+        });
         return valid.size();
+    }
+
+    /** Fires link.milestone for every threshold this batch carried the link's click total across. */
+    private void publishMilestones(Url url, long added) {
+        long before = url.getClickCount() == null ? 0 : url.getClickCount();
+        long after = before + added;
+        for (long milestone : MILESTONES) {
+            if (before < milestone && milestone <= after) {
+                java.util.Map<String, Object> data = webhookService.linkData(url.getShortCode(), url.getOriginalUrl());
+                data.put("milestone", milestone);
+                data.put("totalClicks", after);
+                webhookService.publish(url.getUser(), WebhookService.LINK_MILESTONE, data);
+            }
+        }
     }
 
     private String[] lookupGeo(String ip) {

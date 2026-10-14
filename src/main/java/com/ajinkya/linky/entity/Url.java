@@ -66,6 +66,10 @@ public class Url {
     @Builder.Default
     private Boolean isDeleted = false;
 
+    /** JSON array of routing rules (see RoutingRules); null when the link has none. */
+    @Column(name = "routing_rules", columnDefinition = "TEXT")
+    private String routingRules;
+
     private String title;
 
     @Column(columnDefinition = "TEXT")

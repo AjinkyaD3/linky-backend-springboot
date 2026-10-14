@@ -55,6 +55,7 @@ public class AnalyticsService {
         List<TopItem> topBrowsers = mapToTopItems(urlClickRepository.findTopBrowsersByUrl(url));
         List<TopItem> topDevices = mapToTopItems(urlClickRepository.findTopDevicesByUrl(url));
         List<TopItem> topCountries = mapToTopItems(urlClickRepository.findTopCountriesByUrl(url));
+        List<TopItem> topCities = mapToTopItems(urlClickRepository.findTopCitiesByUrl(url));
         List<TopItem> topReferrers = mapToTopItems(urlClickRepository.findTopReferrersByUrl(url));
 
         return AnalyticsResponse.builder()
@@ -64,6 +65,7 @@ public class AnalyticsService {
                 .topBrowsers(topBrowsers)
                 .topDevices(topDevices)
                 .topCountries(topCountries)
+                .topCities(topCities)
                 .topReferrers(topReferrers)
                 .build();
     }

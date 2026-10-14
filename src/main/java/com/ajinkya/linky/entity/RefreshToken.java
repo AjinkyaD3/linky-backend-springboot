@@ -22,8 +22,16 @@ public class RefreshToken {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /** SHA-256 (hex) of the current refresh token; the token itself is never stored. */
     @Column(nullable = false, unique = true)
     private String token;
+
+    /** Hash of the token this session held before the last rotation, kept to detect replay of a stolen token. */
+    @Column(name = "previous_token", length = 64)
+    private String previousToken;
+
+    @Column(name = "rotated_at")
+    private LocalDateTime rotatedAt;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)

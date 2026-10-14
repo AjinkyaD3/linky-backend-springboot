@@ -70,10 +70,15 @@ public class RateLimiterFilter extends OncePerRequestFilter {
 
     /** Returns the bucket name for rate-limited requests, or null if the request is not limited. */
     private String bucketFor(HttpServletRequest request) {
+        String uri = request.getRequestURI();
+        // saving a bio page creates short links, so it shares the link-creation budget
+        if (("POST".equalsIgnoreCase(request.getMethod()) || "PUT".equalsIgnoreCase(request.getMethod()))
+                && (uri.startsWith("/api/pages") || uri.startsWith("/api/webhooks"))) {
+            return "create";
+        }
         if (!"POST".equalsIgnoreCase(request.getMethod())) {
             return null;
         }
-        String uri = request.getRequestURI();
         if (uri.startsWith("/api/url")) return "create";
         if (uri.equals("/api/auth/login") || uri.equals("/api/auth/register")
                 || uri.equals("/api/auth/forgot-password") || uri.equals("/api/auth/reset-password")) {

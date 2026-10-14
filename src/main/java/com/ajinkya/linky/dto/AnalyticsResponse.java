@@ -14,5 +14,6 @@ public class AnalyticsResponse {
     private List<TopItem> topBrowsers;
     private List<TopItem> topDevices;
     private List<TopItem> topCountries;
+    private List<TopItem> topCities;
     private List<TopItem> topReferrers;
 }

@@ -37,12 +37,14 @@ public class UrlService {
 
     private final UrlRepository urlRepository;
     private final LinkCache linkCache;
+    private final WebhookService webhookService;
     private final PasswordEncoder passwordEncoder;
     private final TagRepository tagRepository;
 
-    public UrlService(UrlRepository urlRepository, LinkCache linkCache, PasswordEncoder passwordEncoder, TagRepository tagRepository) {
+    public UrlService(UrlRepository urlRepository, LinkCache linkCache, WebhookService webhookService, PasswordEncoder passwordEncoder, TagRepository tagRepository) {
         this.urlRepository = urlRepository;
         this.linkCache = linkCache;
+        this.webhookService = webhookService;
         this.passwordEncoder = passwordEncoder;
         this.tagRepository = tagRepository;
     }
@@ -91,7 +93,6 @@ public class UrlService {
         
         Url url = Url.builder()
                 .originalUrl(request.getOriginalUrl())
-                .shortCode("pending") // temporary
                 .user(user)
                 .build();
                 
@@ -106,24 +107,38 @@ public class UrlService {
         if (request.getIsOneTime() != null) {
             url.setIsOneTime(request.getIsOneTime());
         }
-        
-        url = urlRepository.save(url); // Save to get the ID
 
+        if (request.getRoutingRules() != null && !request.getRoutingRules().isEmpty()) {
+            url.setRoutingRules(com.ajinkya.linky.util.RoutingRules.toJson(
+                    com.ajinkya.linky.util.RoutingRules.validate(request.getRoutingRules())));
+        }
+
+        if (request.getExpiresAt() != null) {
+            url.setExpiresAt(java.time.LocalDateTime.ofInstant(request.getExpiresAt(), java.time.ZoneId.systemDefault()));
+        }
+        
         String customAlias = request.getCustomAlias();
         if (customAlias != null && !customAlias.isBlank()) {
+            validateAlias(customAlias);
             if (urlRepository.existsByShortCode(customAlias)) {
                 throw new DuplicateShortCodeException("Short code already exists.");
             }
             url.setShortCode(customAlias);
             url.setCustomAlias(customAlias);
+            try {
+                url = urlRepository.save(url);
+            } catch (org.springframework.dao.DataIntegrityViolationException e) {
+                // lost a race with another request claiming the same alias
+                throw new DuplicateShortCodeException("Short code already exists.");
+            }
         } else {
-            url.setShortCode(generateUniqueShortCode());
+            url = saveWithGeneratedCode(url);
         }
 
-        url = urlRepository.save(url);
-        
         // Write-through cache
         linkCache.invalidate(url.getShortCode());
+
+        webhookService.publish(user, WebhookService.LINK_CREATED, webhookService.linkData(url.getShortCode(), url.getOriginalUrl()));
 
         return mapToResponse(url);
     }
@@ -141,6 +156,11 @@ public class UrlService {
                 .isArchived(url.getIsArchived())
                 .visibility(url.getVisibility() != null ? url.getVisibility().name() : null)
                 .tags(url.getTags() != null ? url.getTags().stream().map(com.ajinkya.linky.entity.Tag::getName).toList() : null)
+                .expiresAt(url.getExpiresAt() == null ? null
+                        : url.getExpiresAt().atZone(java.time.ZoneId.systemDefault()).toInstant())
+                .isOneTime(url.getIsOneTime())
+                .hasPassword(url.getPasswordHash() != null && !url.getPasswordHash().isEmpty())
+                .routingRules(com.ajinkya.linky.util.RoutingRules.parse(url.getRoutingRules()))
                 .build();
     }
 
@@ -226,6 +246,40 @@ public class UrlService {
 
     private static final int SHORT_CODE_LENGTH = 7;
 
+    /**
+     * Inserts the link with a freshly generated random code.
+     *
+     * The existence check inside {@link #generateUniqueShortCode()} makes a clash vanishingly unlikely
+     * (62^7 codes), and the unique index is the real guard. There is deliberately no retry loop: this service
+     * is transactional, and on Postgres a unique violation aborts the whole transaction, so a retry could never
+     * succeed. If it ever happens the caller gets a clear conflict and can simply try again.
+     */
+    private Url saveWithGeneratedCode(Url url) {
+        url.setShortCode(generateUniqueShortCode());
+        try {
+            return urlRepository.save(url);
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            throw new DuplicateShortCodeException("Could not allocate a short code, please try again.");
+        }
+    }
+
+    /** Paths and names the application or frontend already uses; an alias must not shadow them. */
+    private static final java.util.Set<String> RESERVED_ALIASES = java.util.Set.of(
+            "api", "actuator", "swagger", "swagger-ui", "v3", "admin", "login", "logout", "register", "unlock",
+            "uploads", "health", "static", "assets", "dashboard", "settings", "links", "link-error", "robots",
+            "sitemap", "favicon", "webhooks", "pages", "tags", "null", "undefined", "p");
+
+    private static final java.util.regex.Pattern ALIAS_FORMAT = java.util.regex.Pattern.compile("^[A-Za-z0-9_-]{3,20}$");
+
+    static void validateAlias(String alias) {
+        if (!ALIAS_FORMAT.matcher(alias).matches()) {
+            throw new IllegalArgumentException("Alias must be 3-20 characters: letters, digits, dash or underscore");
+        }
+        if (RESERVED_ALIASES.contains(alias.toLowerCase(java.util.Locale.ROOT))) {
+            throw new IllegalArgumentException("That alias is reserved, please choose another");
+        }
+    }
+
     /** Random code with a uniqueness check; 62^7 space makes retries vanishingly rare. */
     private String generateUniqueShortCode() {
         for (int attempt = 0; attempt < 5; attempt++) {
@@ -242,8 +296,9 @@ public class UrlService {
         
         Url duplicate = Url.builder()
                 .originalUrl(original.getOriginalUrl())
-                .shortCode("pending")
                 .user(user)
+                .expiresAt(original.getExpiresAt())
+                .routingRules(original.getRoutingRules())
                 .title(original.getTitle() != null ? original.getTitle() + " (Copy)" : null)
                 .description(original.getDescription())
                 .visibility(original.getVisibility())
@@ -253,9 +308,7 @@ public class UrlService {
                 .isArchived(original.getIsArchived())
                 .build();
                 
-        duplicate = urlRepository.save(duplicate);
-        duplicate.setShortCode(generateUniqueShortCode());
-        duplicate = urlRepository.save(duplicate);
+        duplicate = saveWithGeneratedCode(duplicate);
         
         linkCache.invalidate(duplicate.getShortCode());
         return mapToResponse(duplicate);
@@ -264,8 +317,24 @@ public class UrlService {
     public UrlResponse updateUrlDetails(String shortCode, UpdateUrlRequest request, User user) {
         Url url = urlRepository.findByShortCodeAndUser(shortCode, user).orElseThrow(() -> new ResourceNotFoundException("URL not found"));
         
-        url.setTitle(request.getTitle());
-        url.setDescription(request.getDescription());
+        if (request.getTitle() != null) {
+            url.setTitle(request.getTitle());
+        }
+        if (request.getDescription() != null) {
+            url.setDescription(request.getDescription());
+        }
+        if (request.getOriginalUrl() != null) {
+            url.setOriginalUrl(request.getOriginalUrl().trim());
+        }
+        if (Boolean.TRUE.equals(request.getClearExpiry())) {
+            url.setExpiresAt(null);
+        } else if (request.getExpiresAt() != null) {
+            url.setExpiresAt(java.time.LocalDateTime.ofInstant(request.getExpiresAt(), java.time.ZoneId.systemDefault()));
+        }
+        if (request.getRoutingRules() != null) {
+            url.setRoutingRules(com.ajinkya.linky.util.RoutingRules.toJson(
+                    com.ajinkya.linky.util.RoutingRules.validate(request.getRoutingRules())));
+        }
         
         if (request.getTags() != null) {
             Set<Tag> tags = new HashSet<>();
@@ -283,7 +352,10 @@ public class UrlService {
             url.setTags(tags);
         }
         
-        return mapToResponse(urlRepository.save(url));
+        UrlResponse saved = mapToResponse(urlRepository.save(url));
+        // Destination, expiry and routing all change redirect behaviour: drop cached copies.
+        linkCache.invalidate(url.getShortCode());
+        return saved;
     }
 
     /**

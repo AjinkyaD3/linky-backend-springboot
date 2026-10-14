@@ -19,4 +19,8 @@ public class UrlResponse {
     private Boolean isArchived;
     private String visibility;
     private java.util.List<String> tags;
+    private java.time.Instant expiresAt;
+    private Boolean isOneTime;
+    private Boolean hasPassword;
+    private java.util.List<RoutingRule> routingRules;
 }

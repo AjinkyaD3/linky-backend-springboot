@@ -23,6 +23,9 @@ public interface UrlClickRepository extends JpaRepository<UrlClick, Long> {
     @Query("SELECT uc.country, COUNT(uc) FROM UrlClick uc WHERE uc.url = :url GROUP BY uc.country ORDER BY COUNT(uc) DESC")
     List<Object[]> findTopCountriesByUrl(@Param("url") Url url);
 
+    @Query("SELECT uc.city, COUNT(uc) FROM UrlClick uc WHERE uc.url = :url GROUP BY uc.city ORDER BY COUNT(uc) DESC")
+    List<Object[]> findTopCitiesByUrl(@Param("url") Url url);
+
     @Query("SELECT uc.referrer, COUNT(uc) FROM UrlClick uc WHERE uc.url = :url GROUP BY uc.referrer ORDER BY COUNT(uc) DESC")
     List<Object[]> findTopReferrersByUrl(@Param("url") Url url);
 }
