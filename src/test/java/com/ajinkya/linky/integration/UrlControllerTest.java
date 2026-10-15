@@ -115,6 +115,53 @@ public class UrlControllerTest extends BaseIntegrationTest {
     }
 
     @Test
+    void summaryAndByCode_OnlyCoverOwnLinks() throws Exception {
+        Url mine = new Url();
+        mine.setOriginalUrl("https://example.com/m");
+        mine.setShortCode("mine1");
+        mine.setUser(testUser);
+        mine.setClickCount(5L);
+        mine.setIsFavorite(true);
+        urlRepository.save(mine);
+
+        Url theirs = new Url();
+        theirs.setOriginalUrl("https://example.com/t");
+        theirs.setShortCode("their1");
+        theirs.setUser(adminUser);
+        theirs.setClickCount(9L);
+        urlRepository.save(theirs);
+
+        mockMvc.perform(get("/api/url/my/summary").header("Authorization", userToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalLinks").value(1))
+                .andExpect(jsonPath("$.totalClicks").value(5))
+                .andExpect(jsonPath("$.favorites").value(1));
+
+        mockMvc.perform(get("/api/url/by-code/mine1").header("Authorization", userToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.shortCode").value("mine1"));
+
+        mockMvc.perform(get("/api/url/by-code/their1").header("Authorization", userToken))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void listIsPagedWithTotalCountHeader() throws Exception {
+        for (int i = 0; i < 3; i++) {
+            Url u = new Url();
+            u.setOriginalUrl("https://example.com/p" + i);
+            u.setShortCode("pg" + i);
+            u.setUser(testUser);
+            urlRepository.save(u);
+        }
+
+        mockMvc.perform(get("/api/url/my?page=1&size=2").header("Authorization", userToken))
+                .andExpect(status().isOk())
+                .andExpect(header().string("X-Total-Count", "3"))
+                .andExpect(jsonPath("$.length()").value(1));
+    }
+
+    @Test
     void updateUrl_Owner_ReturnsUpdated() throws Exception {
         // 8. URL update validation regression test
         Url url = new Url();

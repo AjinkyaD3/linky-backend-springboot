@@ -108,6 +108,18 @@ public class UrlController {
                 .body(result.getContent());
     }
 
+    @GetMapping("/my/summary")
+    public ResponseEntity<java.util.Map<String, Long>> getMySummary(@AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(urlService.getUserSummary(user));
+    }
+
+    @GetMapping("/by-code/{shortCode}")
+    public ResponseEntity<UrlResponse> getUrlByCode(@PathVariable String shortCode, @AuthenticationPrincipal User user) {
+        return urlService.findResponseByShortCodeAndUser(shortCode, user)
+                .map(ResponseEntity::ok)
+                .orElseThrow(() -> new com.ajinkya.linky.exception.ResourceNotFoundException("URL not found"));
+    }
+
     @GetMapping("/my/favorites")
     public ResponseEntity<List<UrlResponse>> getMyFavoriteUrls(
             @AuthenticationPrincipal User user,

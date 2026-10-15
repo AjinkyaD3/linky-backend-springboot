@@ -73,6 +73,19 @@ public class UrlService {
     /**
      * Find URL response by ID and User
      */
+    public Optional<UrlResponse> findResponseByShortCodeAndUser(String shortCode, User user) {
+        return urlRepository.findByShortCodeAndUser(shortCode, user).map(this::mapToResponse);
+    }
+
+    /** Totals for the dashboard overview, computed in the database: {links, clicks, favorites}. */
+    public java.util.Map<String, Long> getUserSummary(User user) {
+        Object[] row = urlRepository.summarizeByUser(user).get(0);
+        return java.util.Map.of(
+                "totalLinks", ((Number) row[0]).longValue(),
+                "totalClicks", ((Number) row[1]).longValue(),
+                "favorites", ((Number) row[2]).longValue());
+    }
+
     public Optional<UrlResponse> findResponseByIdAndUser(Long id, User user) {
         return urlRepository.findById(id)
                 .filter(url -> url.getUser() != null && url.getUser().getId().equals(user.getId()))

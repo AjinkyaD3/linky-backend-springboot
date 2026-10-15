@@ -26,6 +26,10 @@ public interface UrlRepository extends JpaRepository<Url, Long>, JpaSpecificatio
 
     org.springframework.data.domain.Page<Url> findByUserAndIsFavorite(com.ajinkya.linky.entity.User user, boolean isFavorite, org.springframework.data.domain.Pageable pageable);
 
+    @Query("SELECT COUNT(u), COALESCE(SUM(u.clickCount), 0), "
+            + "COALESCE(SUM(CASE WHEN u.isFavorite = true THEN 1 ELSE 0 END), 0) FROM Url u WHERE u.user = :user")
+    java.util.List<Object[]> summarizeByUser(@Param("user") com.ajinkya.linky.entity.User user);
+
     Optional<Url> findByShortCodeAndUser(String shortCode, com.ajinkya.linky.entity.User user);
 
     /**
