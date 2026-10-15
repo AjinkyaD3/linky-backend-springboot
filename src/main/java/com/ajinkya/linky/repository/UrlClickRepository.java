@@ -14,6 +14,12 @@ public interface UrlClickRepository extends JpaRepository<UrlClick, Long> {
 
     List<UrlClick> findByUrlAndClickedAtBetween(Url url, LocalDateTime start, LocalDateTime end);
 
+    /** Daily click counts computed in the database, so only one row per day comes back. */
+    @Query("SELECT CAST(uc.clickedAt AS LocalDate), COUNT(uc) FROM UrlClick uc "
+            + "WHERE uc.url = :url AND uc.clickedAt >= :start AND uc.clickedAt <= :end "
+            + "GROUP BY CAST(uc.clickedAt AS LocalDate)")
+    List<Object[]> countClicksPerDay(@Param("url") Url url, @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
     @Query("SELECT uc.browser, COUNT(uc) FROM UrlClick uc WHERE uc.url = :url GROUP BY uc.browser ORDER BY COUNT(uc) DESC")
     List<Object[]> findTopBrowsersByUrl(@Param("url") Url url);
 

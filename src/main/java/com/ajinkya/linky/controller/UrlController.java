@@ -99,18 +99,35 @@ public class UrlController {
             @AuthenticationPrincipal User user,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String sort,
-            @RequestParam(required = false) String tag) {
-        return ResponseEntity.ok(urlService.getUserUrlsFiltered(user, search, sort, tag));
+            @RequestParam(required = false) String tag,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size) {
+        var result = urlService.getUserUrlsPage(user, search, sort, tag, page, size);
+        return ResponseEntity.ok()
+                .header("X-Total-Count", String.valueOf(result.getTotalElements()))
+                .body(result.getContent());
     }
 
     @GetMapping("/my/favorites")
-    public ResponseEntity<List<UrlResponse>> getMyFavoriteUrls(@AuthenticationPrincipal User user) {
-        return ResponseEntity.ok(urlService.getUserFavoriteUrls(user));
+    public ResponseEntity<List<UrlResponse>> getMyFavoriteUrls(
+            @AuthenticationPrincipal User user,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size) {
+        var result = urlService.getUserFavoriteUrls(user, page, size);
+        return ResponseEntity.ok()
+                .header("X-Total-Count", String.valueOf(result.getTotalElements()))
+                .body(result.getContent());
     }
 
     @GetMapping("/my/archived")
-    public ResponseEntity<List<UrlResponse>> getMyArchivedUrls(@AuthenticationPrincipal User user) {
-        return ResponseEntity.ok(urlService.getUserArchivedUrls(user));
+    public ResponseEntity<List<UrlResponse>> getMyArchivedUrls(
+            @AuthenticationPrincipal User user,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size) {
+        var result = urlService.getUserArchivedUrls(user, page, size);
+        return ResponseEntity.ok()
+                .header("X-Total-Count", String.valueOf(result.getTotalElements()))
+                .body(result.getContent());
     }
 
     @PutMapping("/{shortCode}/favorite")

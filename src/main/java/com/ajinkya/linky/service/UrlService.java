@@ -193,6 +193,12 @@ public class UrlService {
     }
 
     public List<UrlResponse> getUserUrlsFiltered(User user, String search, String sort, String tag) {
+        return getUserUrlsPage(user, search, sort, tag, null, null).getContent();
+    }
+
+    /** Same filters as above; when page and size are given only that slice is read from the database. */
+    public org.springframework.data.domain.Page<UrlResponse> getUserUrlsPage(
+            User user, String search, String sort, String tag, Integer page, Integer size) {
         Specification<Url> spec = Specification.where((root, query, cb) -> cb.equal(root.get("user"), user));
 
         if (search != null && !search.isBlank()) {
@@ -221,15 +227,34 @@ public class UrlService {
             sorting = Sort.by(Sort.Direction.DESC, "createdAt");
         }
 
-        return urlRepository.findAll(spec, sorting).stream().map(this::mapToResponse).collect(Collectors.toList());
+        if (size == null) {
+            List<UrlResponse> all = urlRepository.findAll(spec, sorting).stream().map(this::mapToResponse).collect(Collectors.toList());
+            return new org.springframework.data.domain.PageImpl<>(all);
+        }
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(
+                Math.max(page == null ? 0 : page, 0), Math.min(Math.max(size, 1), 100), sorting);
+        return urlRepository.findAll(spec, pageable).map(this::mapToResponse);
     }
 
-    public List<UrlResponse> getUserFavoriteUrls(User user) {
-        return urlRepository.findByUserAndIsFavorite(user, true).stream().map(this::mapToResponse).collect(Collectors.toList());
+    public org.springframework.data.domain.Page<UrlResponse> getUserFavoriteUrls(User user, Integer page, Integer size) {
+        if (size == null) {
+            return new org.springframework.data.domain.PageImpl<>(
+                    urlRepository.findByUserAndIsFavorite(user, true).stream().map(this::mapToResponse).collect(Collectors.toList()));
+        }
+        return urlRepository.findByUserAndIsFavorite(user, true, newestFirst(page, size)).map(this::mapToResponse);
     }
 
-    public List<UrlResponse> getUserArchivedUrls(User user) {
-        return urlRepository.findByUserAndIsArchived(user, true).stream().map(this::mapToResponse).collect(Collectors.toList());
+    public org.springframework.data.domain.Page<UrlResponse> getUserArchivedUrls(User user, Integer page, Integer size) {
+        if (size == null) {
+            return new org.springframework.data.domain.PageImpl<>(
+                    urlRepository.findByUserAndIsArchived(user, true).stream().map(this::mapToResponse).collect(Collectors.toList()));
+        }
+        return urlRepository.findByUserAndIsArchived(user, true, newestFirst(page, size)).map(this::mapToResponse);
+    }
+
+    private org.springframework.data.domain.Pageable newestFirst(Integer page, Integer size) {
+        return org.springframework.data.domain.PageRequest.of(
+                Math.max(page == null ? 0 : page, 0), Math.min(Math.max(size, 1), 100), Sort.by(Sort.Direction.DESC, "createdAt"));
     }
 
     public UrlResponse toggleFavorite(String shortCode, User user) {

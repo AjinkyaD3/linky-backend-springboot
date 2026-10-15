@@ -22,6 +22,10 @@ public interface UrlRepository extends JpaRepository<Url, Long>, JpaSpecificatio
 
     java.util.List<Url> findByUserAndIsFavorite(com.ajinkya.linky.entity.User user, boolean isFavorite);
 
+    org.springframework.data.domain.Page<Url> findByUserAndIsArchived(com.ajinkya.linky.entity.User user, boolean isArchived, org.springframework.data.domain.Pageable pageable);
+
+    org.springframework.data.domain.Page<Url> findByUserAndIsFavorite(com.ajinkya.linky.entity.User user, boolean isFavorite, org.springframework.data.domain.Pageable pageable);
+
     Optional<Url> findByShortCodeAndUser(String shortCode, com.ajinkya.linky.entity.User user);
 
     /**

@@ -4,7 +4,6 @@ import com.ajinkya.linky.dto.AnalyticsResponse;
 import com.ajinkya.linky.dto.ClickOverTime;
 import com.ajinkya.linky.dto.TopItem;
 import com.ajinkya.linky.entity.Url;
-import com.ajinkya.linky.entity.UrlClick;
 import com.ajinkya.linky.exception.ResourceNotFoundException;
 import com.ajinkya.linky.repository.UrlClickRepository;
 import com.ajinkya.linky.repository.UrlRepository;
@@ -13,6 +12,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -35,13 +35,11 @@ public class AnalyticsService {
         long totalClicks = urlClickRepository.countByUrl(url);
 
         LocalDateTime start = LocalDateTime.now().minusDays(days);
-        List<UrlClick> clicks = urlClickRepository.findByUrlAndClickedAtBetween(url, start, LocalDateTime.now());
-
-        Map<LocalDate, Long> clicksByDate = clicks.stream()
-                .collect(Collectors.groupingBy(
-                        click -> click.getClickedAt().toLocalDate(),
-                        Collectors.counting()
-                ));
+        Map<LocalDate, Long> clicksByDate = new HashMap<>();
+        for (Object[] row : urlClickRepository.countClicksPerDay(url, start, LocalDateTime.now())) {
+            LocalDate date = row[0] instanceof java.sql.Date d ? d.toLocalDate() : (LocalDate) row[0];
+            clicksByDate.put(date, ((Number) row[1]).longValue());
+        }
 
         List<ClickOverTime> clicksOverTime = new ArrayList<>();
         for (int i = days - 1; i >= 0; i--) {
