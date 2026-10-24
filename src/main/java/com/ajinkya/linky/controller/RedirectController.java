@@ -125,28 +125,56 @@ public class RedirectController {
                 .orElseGet(CachedLink::notFound);
     }
 
+    /**
+     * Second step of a password-protected redirect. Applies every rule the redirect itself applies
+     * (private owner, expiry, active, one-time) and counts the click, then hands the target back.
+     */
     @PostMapping("/{shortCode}/unlock")
-    public ResponseEntity<UnlockResponse> unlockUrl(@PathVariable String shortCode, @Valid @RequestBody UnlockRequest request) {
+    public ResponseEntity<UnlockResponse> unlockUrl(@PathVariable String shortCode, @Valid @RequestBody UnlockRequest request,
+                                                    HttpServletRequest httpRequest) {
         Url url = urlRepository.findByShortCode(shortCode)
             .orElseThrow(() -> new ResourceNotFoundException("Not found"));
-            
+
         if (url.getPasswordHash() == null || url.getPasswordHash().isEmpty()) {
             return ResponseEntity.badRequest().build();
         }
-        
+
+        if (url.getVisibility() == Visibility.PRIVATE && !isOwner(url)) {
+            // same answer as a missing link: a private link's existence is not revealed
+            throw new ResourceNotFoundException("Not found");
+        }
+
         if (!passwordEncoder.matches(request.getPassword(), url.getPasswordHash())) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
-        
-        if (url.getIsOneTime()) {
+
+        if (urlService.isExpired(url)) {
+            throw new ResourceNotFoundException("This URL has expired.");
+        }
+        if (!Boolean.TRUE.equals(url.getIsActive())) {
+            throw new ResourceNotFoundException("This URL is not active.");
+        }
+
+        if (Boolean.TRUE.equals(url.getIsOneTime())) {
             if (urlRepository.deactivateIfActive(url.getId()) == 0) {
                 throw new ResourceNotFoundException("Link is no longer active");
             }
             linkCache.invalidate(shortCode);
-            return ResponseEntity.ok(new UnlockResponse(url.getOriginalUrl()));
         }
 
-        return ResponseEntity.ok(new UnlockResponse(urlService.getOriginalUrl(shortCode)));
+        clickPublisher.publish(url.getId(), httpRequest);
+
+        String country = countryHeader == null || countryHeader.isBlank() ? null : httpRequest.getHeader(countryHeader);
+        String target = com.ajinkya.linky.util.RoutingRules.resolve(
+                com.ajinkya.linky.util.RoutingRules.parse(url.getRoutingRules()), url.getOriginalUrl(),
+                httpRequest.getHeader("User-Agent"), country);
+        return ResponseEntity.ok(new UnlockResponse(target));
+    }
+
+    private static boolean isOwner(Url url) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return auth != null && auth.getPrincipal() instanceof User user
+                && url.getUser() != null && url.getUser().getId().equals(user.getId());
     }
 
     private ResponseEntity<Void> frontendErrorRedirect(String reason) {

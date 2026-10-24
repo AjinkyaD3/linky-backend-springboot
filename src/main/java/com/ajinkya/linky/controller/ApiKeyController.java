@@ -11,7 +11,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.security.crypto.password.PasswordEncoder;
+import com.ajinkya.linky.util.Hashing;
 
 import java.util.List;
 import java.util.UUID;
@@ -22,11 +22,9 @@ import java.util.stream.Collectors;
 public class ApiKeyController {
 
     private final ApiKeyRepository apiKeyRepository;
-    private final PasswordEncoder passwordEncoder;
 
-    public ApiKeyController(ApiKeyRepository apiKeyRepository, PasswordEncoder passwordEncoder) {
+    public ApiKeyController(ApiKeyRepository apiKeyRepository) {
         this.apiKeyRepository = apiKeyRepository;
-        this.passwordEncoder = passwordEncoder;
     }
 
     @GetMapping
@@ -35,8 +33,8 @@ public class ApiKeyController {
             ApiKeyDto.builder()
                 .id(key.getId())
                 .name(key.getName())
-                // Mask the key for security in the list view
-                .keyValue(key.getKeyValue().substring(0, 8) + "****************")
+                // Only a hash is stored; show the public prefix so the user can tell keys apart
+                .keyValue("lk_" + key.getId() + "_****************")
                 .createdAt(key.getCreatedAt())
                 .build()
         ).collect(Collectors.toList());
@@ -60,7 +58,8 @@ public class ApiKeyController {
         String secret = UUID.randomUUID().toString().replace("-", "");
         String plainKey = "lk_" + apiKey.getId() + "_" + secret;
         
-        apiKey.setKeyValue(passwordEncoder.encode(plainKey));
+        // a random 128-bit secret: SHA-256 is enough (see ApiKeyAuthenticationFilter)
+        apiKey.setKeyValue(Hashing.sha256Hex(plainKey));
         apiKey = apiKeyRepository.save(apiKey);
         
         ApiKeyDto response = ApiKeyDto.builder()

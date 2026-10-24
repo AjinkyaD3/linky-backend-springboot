@@ -74,3 +74,6 @@ AGENTS.md
 # GeoIP databases (large, downloaded by scripts/download-geoip.sh)
 geoip/
 *.mmdb
+
+### Zoho Catalyst (local project link; catalyst.json is the shareable deploy config)
+.catalystrc

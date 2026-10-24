@@ -14,6 +14,11 @@ import java.util.function.Function;
 @Component
 public class JwtUtil {
 
+    /** Claim that says what a token is for, so a refresh token can never be used as an access token. */
+    public static final String TYPE_CLAIM = "typ";
+    public static final String ACCESS = "access";
+    public static final String REFRESH = "refresh";
+
     private final SecretKey key;
     private final long accessTokenExpiry;
     private final long refreshTokenExpiry;
@@ -31,6 +36,7 @@ public class JwtUtil {
         return Jwts.builder()
                 .subject(email)
                 .claim("role", role)
+                .claim(TYPE_CLAIM, ACCESS)
                 .issuedAt(new Date(System.currentTimeMillis()))
                 .expiration(new Date(System.currentTimeMillis() + accessTokenExpiry))
                 .signWith(key)
@@ -41,6 +47,7 @@ public class JwtUtil {
         return Jwts.builder()
                 .id(java.util.UUID.randomUUID().toString()) // jti: two tokens issued in the same second must differ
                 .subject(email)
+                .claim(TYPE_CLAIM, REFRESH)
                 .issuedAt(new Date(System.currentTimeMillis()))
                 .expiration(new Date(System.currentTimeMillis() + refreshTokenExpiry))
                 .signWith(key)
@@ -49,10 +56,6 @@ public class JwtUtil {
 
     public String extractEmail(String token) {
         return extractClaim(token, Claims::getSubject);
-    }
-
-    public String extractRole(String token) {
-        return extractClaim(token, claims -> claims.get("role", String.class));
     }
 
     public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
@@ -68,10 +71,23 @@ public class JwtUtil {
                 .getPayload();
     }
 
-    public boolean validateToken(String token) {
+    /** Valid signature, not expired, and issued as an access token. */
+    public boolean isValidAccessToken(String token) {
         try {
-            extractAllClaims(token);
-            return true;
+            return ACCESS.equals(extractAllClaims(token).get(TYPE_CLAIM, String.class));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Valid signature, not expired, and not an access token. Refresh tokens issued before the type claim
+     * existed have no {@code typ}; they are still accepted here because the refresh flow also requires the
+     * token's hash to be stored server-side, which an access token never is.
+     */
+    public boolean isValidRefreshToken(String token) {
+        try {
+            return !ACCESS.equals(extractAllClaims(token).get(TYPE_CLAIM, String.class));
         } catch (Exception e) {
             return false;
         }

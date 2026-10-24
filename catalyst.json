@@ -1,0 +1,11 @@
+{
+  "appsail": [
+    {
+      "source": "docker-archive://target/jib-image.tar",
+      "name": "linky-backend",
+      "port": {
+        "http": 8080
+      }
+    }
+  ]
+}

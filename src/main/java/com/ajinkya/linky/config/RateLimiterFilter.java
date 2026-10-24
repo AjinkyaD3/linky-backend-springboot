@@ -22,6 +22,8 @@ import java.util.List;
 public class RateLimiterFilter extends OncePerRequestFilter {
 
     private static final int MAX_REQUESTS = 10;
+    /** One bulk call creates up to 100 links, so it gets its own, much smaller budget. */
+    private static final int MAX_BULK_REQUESTS = 2;
     private static final long WINDOW_SECONDS = 60;
 
     private static final DefaultRedisScript<Long> INCR_WITH_TTL = new DefaultRedisScript<>(
@@ -54,7 +56,8 @@ public class RateLimiterFilter extends OncePerRequestFilter {
                 logger.warn("Rate limiter unavailable, failing open: " + e);
             }
 
-            if (requests != null && requests > MAX_REQUESTS) {
+            int limit = "bulk".equals(bucket) ? MAX_BULK_REQUESTS : MAX_REQUESTS;
+            if (requests != null && requests > limit) {
                 response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
                 response.setHeader("Retry-After", String.valueOf(WINDOW_SECONDS));
                 response.setContentType("application/json");
@@ -79,6 +82,7 @@ public class RateLimiterFilter extends OncePerRequestFilter {
         if (!"POST".equalsIgnoreCase(request.getMethod())) {
             return null;
         }
+        if (uri.equals("/api/url/bulk")) return "bulk";
         if (uri.startsWith("/api/url")) return "create";
         if (uri.equals("/api/auth/login") || uri.equals("/api/auth/register")
                 || uri.equals("/api/auth/forgot-password") || uri.equals("/api/auth/reset-password")) {

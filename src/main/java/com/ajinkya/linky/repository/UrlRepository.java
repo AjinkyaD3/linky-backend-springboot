@@ -42,10 +42,6 @@ public interface UrlRepository extends JpaRepository<Url, Long>, JpaSpecificatio
     int deactivateIfActive(@Param("id") Long id);
 
     @Modifying
-    @Query("UPDATE Url u SET u.clickCount = u.clickCount + 1 WHERE u.id = :id")
-    void incrementClickCount(@Param("id") Long id);
-
-    @Modifying
     @Query("UPDATE Url u SET u.clickCount = u.clickCount + :n WHERE u.id = :id")
     void incrementClickCountBy(@Param("id") Long id, @Param("n") Long n);
 

@@ -41,6 +41,8 @@ public class AuthService {
     private final JwtUtil jwtUtil;
     private final RefreshTokenRepository refreshTokenRepository;
     private final Duration reuseGrace;
+    /** Compared against when the email is unknown, so login timing does not reveal which emails exist. */
+    private final String dummyHash;
 
     public AuthService(UserRepository userRepository, PasswordEncoder passwordEncoder, JwtUtil jwtUtil,
                        RefreshTokenRepository refreshTokenRepository,
@@ -50,16 +52,18 @@ public class AuthService {
         this.jwtUtil = jwtUtil;
         this.refreshTokenRepository = refreshTokenRepository;
         this.reuseGrace = Duration.ofSeconds(reuseGraceSeconds);
+        this.dummyHash = passwordEncoder.encode("not-a-real-password");
     }
 
     public void register(RegisterRequest request) {
-        if (userRepository.existsByEmail(request.getEmail())) {
+        String email = UserRepository.normalizeEmail(request.getEmail());
+        if (userRepository.existsByEmailIgnoreCase(email)) {
             throw new IllegalArgumentException("Email already in use");
         }
 
         User user = User.builder()
-                .name(request.getName())
-                .email(request.getEmail())
+                .name(request.getName().trim())
+                .email(email)
                 .password(passwordEncoder.encode(request.getPassword()))
                 .role(Role.USER)
                 .build();
@@ -68,10 +72,9 @@ public class AuthService {
     }
 
     public LoginResponse login(LoginRequest request) {
-        User user = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new BadCredentialsException("Invalid email or password"));
-
-        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+        User user = userRepository.findByEmailForLogin(request.getEmail()).orElse(null);
+        boolean ok = passwordEncoder.matches(request.getPassword(), user == null ? dummyHash : user.getPassword());
+        if (user == null || !ok) {
             throw new BadCredentialsException("Invalid email or password");
         }
 
@@ -91,7 +94,7 @@ public class AuthService {
      */
     @Transactional(noRollbackFor = IllegalArgumentException.class)
     public LoginResponse refreshToken(String tokenString) {
-        if (!jwtUtil.validateToken(tokenString)) {
+        if (!jwtUtil.isValidRefreshToken(tokenString)) {
             throw new IllegalArgumentException("Invalid refresh token");
         }
 

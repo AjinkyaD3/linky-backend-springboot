@@ -6,6 +6,7 @@ import com.resend.services.emails.model.CreateEmailOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -27,6 +28,11 @@ public class EmailService {
         this.resend = new Resend(resendApiKey == null || resendApiKey.isBlank() ? "unset" : resendApiKey);
     }
 
+    /**
+     * Sent on a background thread: the request returns at once, so response time does not reveal
+     * whether the address has an account, and a slow mail provider never holds a request open.
+     */
+    @Async
     public void sendPasswordResetEmail(String toEmail, String resetLink) {
         if (resendApiKey == null || resendApiKey.isBlank()) {
             log.warn("RESEND_API_KEY is not set; skipping password reset email to {}", toEmail);

@@ -26,6 +26,10 @@ spring:
     show-sql: false
     open-in-view: false
 
+server:
+  # Catalyst AppSail tells the app which port to listen on; other hosts usually use PORT.
+  port: ${X_ZOHO_CATALYST_LISTEN_PORT:${PORT:8080}}
+
 jwt:
   secret: ${JWT_SECRET}
   access-token-expiry: 900000
@@ -34,5 +38,5 @@ jwt:
 app:
   # Render (and most PaaS) terminate TLS at one proxy that appends the client address.
   trusted-proxy-hops: ${TRUSTED_PROXY_HOPS:1}
-  # Render injects RENDER_EXTERNAL_URL; set PUBLIC_BASE_URL explicitly when using a custom domain.
+  # Render injects RENDER_EXTERNAL_URL; on Catalyst (or with a custom domain) set PUBLIC_BASE_URL explicitly.
   public-base-url: ${PUBLIC_BASE_URL:${RENDER_EXTERNAL_URL:http://localhost:8080}}

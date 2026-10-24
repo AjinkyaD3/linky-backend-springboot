@@ -28,6 +28,8 @@
 	</scm>
 	<properties>
 		<java.version>21</java.version>
+		<!-- stamped into the image at build time with -Dgit.commit=(short commit sha) -->
+		<git.commit>unknown</git.commit>
 		<maven.compiler.source>21</maven.compiler.source>
 		<maven.compiler.target>21</maven.compiler.target>
 	</properties>
@@ -171,6 +173,63 @@
 							<artifactId>lombok</artifactId>
 						</exclude>
 					</excludes>
+				</configuration>
+			</plugin>
+			<!--
+				Builds the container image without Docker: ./mvnw -DskipTests package jib:buildTar
+				writes target/jib-image.tar (deployable with docker-archive://). Layers are split into
+				libraries / resources / classes, so a code-only change re-uploads only the small classes layer.
+				The Dockerfile stays for anyone building with Docker.
+			-->
+			<plugin>
+				<groupId>com.google.cloud.tools</groupId>
+				<artifactId>jib-maven-plugin</artifactId>
+				<version>3.5.2</version>
+				<configuration>
+					<from>
+						<image>eclipse-temurin:21-jre</image>
+						<platforms>
+							<platform>
+								<architecture>amd64</architecture>
+								<os>linux</os>
+							</platform>
+						</platforms>
+					</from>
+					<to>
+						<image>linky-backend</image>
+					</to>
+					<container>
+						<!-- non-root, as in the Dockerfile -->
+						<user>1000:1000</user>
+						<!-- logs/ and uploads/ are relative paths, so they land in a directory any user can write -->
+						<workingDirectory>/tmp</workingDirectory>
+						<ports>
+							<port>8080</port>
+						</ports>
+						<!--
+							Explicit entrypoint with an absolute java path and the profile as a JVM flag: some
+							platforms (Catalyst AppSail) start the container without the image's environment,
+							so neither PATH nor SPRING_PROFILES_ACTIVE from the image can be relied on.
+						-->
+						<entrypoint>
+							<arg>/opt/java/openjdk/bin/java</arg>
+							<arg>-XX:MaxRAMPercentage=75</arg>
+							<!-- start faster on a small, shared CPU: simple GC, light JIT, no devtools restart classloader -->
+							<arg>-XX:+UseSerialGC</arg>
+							<arg>-XX:TieredStopAtLevel=1</arg>
+							<arg>-Xshare:auto</arg>
+							<arg>-Dspring.devtools.restart.enabled=false</arg>
+							<arg>-Dspring.profiles.active=prod</arg>
+							<arg>-DGIT_COMMIT=${git.commit}</arg>
+							<arg>-cp</arg>
+							<arg>@/app/jib-classpath-file</arg>
+							<arg>com.ajinkya.linky.LinkyApplication</arg>
+						</entrypoint>
+						<environment>
+							<SPRING_PROFILES_ACTIVE>prod</SPRING_PROFILES_ACTIVE>
+							<GIT_COMMIT>${git.commit}</GIT_COMMIT>
+						</environment>
+					</container>
 				</configuration>
 			</plugin>
 			<plugin>

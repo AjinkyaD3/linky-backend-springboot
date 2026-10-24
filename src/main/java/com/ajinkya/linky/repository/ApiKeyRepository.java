@@ -10,7 +10,6 @@ import java.util.Optional;
 
 public interface ApiKeyRepository extends JpaRepository<ApiKey, Long> {
     List<ApiKey> findByUser(User user);
-    Optional<ApiKey> findByKeyValue(String keyValue);
 
     @Modifying
     void deleteByUser(User user);

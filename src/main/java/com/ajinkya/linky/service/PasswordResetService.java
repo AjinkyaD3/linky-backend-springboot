@@ -44,7 +44,7 @@ public class PasswordResetService {
     }
 
     public void createResetToken(String email) {
-        User user = userRepository.findByEmail(email).orElse(null);
+        User user = userRepository.findByEmailForLogin(email).orElse(null);
         if (user == null) {
             log.warn("Password reset requested for non-existent email: {}", email);
             return; // Don't reveal user existence

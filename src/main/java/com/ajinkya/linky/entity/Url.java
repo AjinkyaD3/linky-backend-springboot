@@ -79,6 +79,8 @@ public class Url {
     @JoinColumn(name = "user_id")
     private User user;
 
+    // Lists of links load their tags in batches instead of one query per link.
+    @org.hibernate.annotations.BatchSize(size = 50)
     @ManyToMany
     @JoinTable(
             name = "url_tags",

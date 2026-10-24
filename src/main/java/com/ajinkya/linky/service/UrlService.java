@@ -50,29 +50,13 @@ public class UrlService {
     }
 
     /**
-     * Get all URLs
-     */
-    public List<UrlResponse> findAll() {
-        return urlRepository.findAll().stream().map(this::mapToResponse).collect(Collectors.toList());
-    }
-
-    /**
      * Find URL by ID
      */
     public Optional<Url> findById(Long id) {
         return urlRepository.findById(id);
     }
 
-    /**
-     * Find URL response by ID
-     */
-    public Optional<UrlResponse> findResponseById(Long id) {
-        return urlRepository.findById(id).map(this::mapToResponse);
-    }
-
-    /**
-     * Find URL response by ID and User
-     */
+    /** The caller's own link by short code (foreign links look missing). */
     public Optional<UrlResponse> findResponseByShortCodeAndUser(String shortCode, User user) {
         return urlRepository.findByShortCodeAndUser(shortCode, user).map(this::mapToResponse);
     }
@@ -177,39 +161,7 @@ public class UrlService {
                 .build();
     }
 
-    /**
-     * Update an existing URL
-     */
-    public Url update(Long id, Url updatedUrl) {
-
-        Url existing = urlRepository.findById(id)
-                .orElseThrow(() ->
-                        new ResourceNotFoundException("URL not found with id " + id));
-
-        existing.setOriginalUrl(updatedUrl.getOriginalUrl());
-        existing.setShortCode(updatedUrl.getShortCode());
-        existing.setExpiresAt(updatedUrl.getExpiresAt());
-        existing.setUser(updatedUrl.getUser());
-        existing.setCustomAlias(updatedUrl.getCustomAlias());
-        if (updatedUrl.getIsActive() != null) {
-            existing.setIsActive(updatedUrl.getIsActive());
-        }
-        
-        // Update cache
-        linkCache.invalidate(existing.getShortCode());
-
-        return existing;
-    }
-
-    public List<UrlResponse> getUserUrls(User user) {
-        return urlRepository.findByUser(user).stream().map(this::mapToResponse).collect(Collectors.toList());
-    }
-
-    public List<UrlResponse> getUserUrlsFiltered(User user, String search, String sort, String tag) {
-        return getUserUrlsPage(user, search, sort, tag, null, null).getContent();
-    }
-
-    /** Same filters as above; when page and size are given only that slice is read from the database. */
+    /** The user's links, optionally searched, tag-filtered and sorted; when size is given only that page is read. */
     public org.springframework.data.domain.Page<UrlResponse> getUserUrlsPage(
             User user, String search, String sort, String tag, Integer page, Integer size) {
         Specification<Url> spec = Specification.where((root, query, cb) -> cb.equal(root.get("user"), user));
@@ -344,6 +296,7 @@ public class UrlService {
                 .isOneTime(original.getIsOneTime())
                 .isFavorite(original.getIsFavorite())
                 .isArchived(original.getIsArchived())
+                .tags(original.getTags() == null ? null : new HashSet<>(original.getTags()))
                 .build();
                 
         duplicate = saveWithGeneratedCode(duplicate);
@@ -375,15 +328,17 @@ public class UrlService {
         }
         
         if (request.getTags() != null) {
+            // one query for the user's existing tags, not one per tag name
+            java.util.Map<String, Tag> byName = new java.util.HashMap<>();
+            for (Tag existing : tagRepository.findByUser(user)) {
+                byName.putIfAbsent(existing.getName().toLowerCase(java.util.Locale.ROOT), existing);
+            }
             Set<Tag> tags = new HashSet<>();
             for (String tagName : request.getTags()) {
                 if (tagName != null && !tagName.isBlank()) {
-                    List<Tag> userTags = tagRepository.findByUser(user);
-                    Tag tag = userTags.stream().filter(t -> t.getName().equalsIgnoreCase(tagName)).findFirst().orElse(null);
-                    if (tag == null) {
-                        tag = Tag.builder().name(tagName).user(user).build();
-                        tag = tagRepository.save(tag);
-                    }
+                    String name = tagName.trim();
+                    Tag tag = byName.computeIfAbsent(name.toLowerCase(java.util.Locale.ROOT),
+                            key -> tagRepository.save(Tag.builder().name(name).user(user).build()));
                     tags.add(tag);
                 }
             }
@@ -416,18 +371,6 @@ public class UrlService {
     }
 
     /**
-     * Increment click count
-     */
-    public void incrementClickCount(String shortCode) {
-
-        Url url = urlRepository.findByShortCode(shortCode)
-                .orElseThrow(() ->
-                        new ResourceNotFoundException("Short code not found"));
-
-        url.setClickCount(url.getClickCount() + 1);
-    }
-
-    /**
      * Check if URL has expired
      */
     public boolean isExpired(Url url) {
@@ -436,29 +379,4 @@ public class UrlService {
                 && url.getExpiresAt().isBefore(LocalDateTime.now());
     }
 
-    /**
-     * Resolve the target of an active, unexpired link straight from the database.
-     * Used by the (rare) unlock flow; the redirect hot path goes through {@link LinkCache}.
-     */
-    public String getOriginalUrl(String shortCode) {
-        Url url = urlRepository.findByShortCode(shortCode)
-                .orElseThrow(() -> new ResourceNotFoundException("Short code not found"));
-
-        if (isExpired(url)) {
-            throw new ResourceNotFoundException("This URL has expired.");
-        }
-
-        if (!url.getIsActive()) {
-            throw new ResourceNotFoundException("This URL is not active.");
-        }
-
-        return url.getOriginalUrl();
-    }
-
-    /**
-     * Total URLs
-     */
-    public long count() {
-        return urlRepository.count();
-    }
 }

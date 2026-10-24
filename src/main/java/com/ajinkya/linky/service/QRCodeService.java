@@ -57,14 +57,6 @@ public class QRCodeService {
         return value.startsWith("#") ? value.substring(1).toLowerCase() : value.toLowerCase();
     }
 
-    public byte[] generateQRCodeImage(String text, int width, int height) {
-        return generatePng(text, new Style(Math.max(width, height), "000000", "ffffff", 4));
-    }
-
-    public String generateQRCodeSvg(String text, int width, int height) {
-        return generateSvg(text, new Style(Math.max(width, height), "000000", "ffffff", 4));
-    }
-
     public byte[] generatePng(String text, Style style) {
         try {
             BitMatrix matrix = new QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, style.size(), style.size(), hints(style));

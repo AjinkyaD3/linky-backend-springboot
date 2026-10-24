@@ -5,6 +5,12 @@ spring:
     active: ${SPRING_PROFILES_ACTIVE:dev}
   lifecycle:
     timeout-per-shutdown-phase: 20s
+  task:
+    scheduling:
+      pool:
+        # The click consumer, its reclaimer and the webhook dispatcher are all @Scheduled. With
+        # Spring's default single thread, a slow webhook endpoint would stall click ingestion.
+        size: 4
   servlet:
     multipart:
       max-file-size: 2MB
